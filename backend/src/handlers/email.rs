@@ -26,23 +26,23 @@ pub async fn send_email(
             Ok(Some((email, _, _, refresh_token))) => {
                 // User is authenticated, check if they have a refresh token
                 if let Some(refresh_token) = refresh_token {
-                    // Create email content
-                    let message_content = format!(
-                        "From: {}\r\nTo: {}\r\nSubject: {}\r\n\r\n{}",
-                        email,
-                        email_req.recipient_email,
-                        email_req.subject,
-                        email_req.body
+                    // Create raw email message in base64url format
+                    let raw_message = encode_config(
+                        format!(
+                            "From: {}\r\nTo: {}\r\nSubject: {}\r\n\r\n{}",
+                            email,
+                            email_req.recipient_email,
+                            email_req.subject,
+                            email_req.body
+                        ),
+                        STANDARD
                     );
-                    
-                    // Encode the message in base64
-                    let raw_message = encode_config(message_content, STANDARD);
                     
                     // Get access token
                     match gmail_client.get_token(&email, &refresh_token).await {
                         Ok(access_token) => {
                             // Send the email using Gmail API
-                            match gmail_client.send_message(&email, &access_token, &raw_message).await {
+                            match gmail_client.send_message(&email, &access_token, raw_message).await {
                                 Ok(_) => {
                                     // Store the email in our database
                                     match db::store_email(

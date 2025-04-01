@@ -19,8 +19,11 @@ pub async fn auth_google() -> impl Responder {
         .add_scope(Scope::new("https://www.googleapis.com/auth/gmail.readonly".to_string()))
         .add_scope(Scope::new("https://www.googleapis.com/auth/gmail.send".to_string()))
         .add_scope(Scope::new("https://www.googleapis.com/auth/gmail.modify".to_string()))
+        .add_extra_param("access_type", "offline")
+        .add_extra_param("prompt", "consent")
         .url();
 
+    println!("Auth URL: {}", auth_url);
     HttpResponse::Found().append_header(("Location", auth_url.to_string())).finish()
 }
 
@@ -58,6 +61,8 @@ pub async fn auth_google_callback(
     let refresh_token = token_result
         .refresh_token()
         .map(|token| token.secret().clone());
+    
+    println!("Refresh token received: {:?}", refresh_token);
 
     // Get user info from Google
     let user_info = match auth::get_google_user_info(token_result.access_token().secret()).await {

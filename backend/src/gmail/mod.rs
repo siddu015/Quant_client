@@ -4,14 +4,24 @@ use tokio::sync::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use serde_json::json;
 
 // Gmail API token response
 #[derive(Debug, Deserialize)]
 pub struct TokenResponse {
     pub access_token: String,
-    pub expires_in: u64,
-    pub refresh_token: Option<String>,
+    pub expires_in: i64,
     pub token_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+}
+
+// Gmail API message response
+#[derive(Debug, Deserialize)]
+pub struct SendMessageResponse {
+    pub id: String,
+    pub thread_id: String,
+    pub label_ids: Option<Vec<String>>,
 }
 
 // Gmail API message
@@ -103,6 +113,7 @@ impl GmailClient {
             let token_cache = self.token_cache.read().await;
             if let Some(cached) = token_cache.get(user_id) {
                 if cached.expires_at > Instant::now() + Duration::from_secs(60) {
+                    println!("Using cached token for {}", user_id);
                     return Ok(cached.access_token.clone());
                 }
             }
@@ -112,35 +123,51 @@ impl GmailClient {
         let client_id = std::env::var("GOOGLE_CLIENT_ID").expect("GOOGLE_CLIENT_ID must be set");
         let client_secret = std::env::var("GOOGLE_CLIENT_SECRET").expect("GOOGLE_CLIENT_SECRET must be set");
 
+        println!("Refreshing token for user {} with refresh_token {}", user_id, refresh_token);
+
         let params = [
-            ("client_id", client_id),
-            ("client_secret", client_secret),
+            ("client_id", client_id.clone()),
+            ("client_secret", client_secret.clone()),
             ("refresh_token", refresh_token.to_string()),
             ("grant_type", "refresh_token".to_string()),
         ];
 
-        let token_response = self.http_client
+        // Debug output
+        println!("Token refresh request - URL: https://oauth2.googleapis.com/token");
+        println!("Token refresh params - client_id: {}, refresh_token: {}", client_id, refresh_token);
+
+        let response = self.http_client
             .post("https://oauth2.googleapis.com/token")
             .form(&params)
             .send()
-            .await?
-            .json::<TokenResponse>()
             .await?;
+        
+        // Check for error status
+        if !response.status().is_success() {
+            let status = response.status();
+            let error = response.text().await.unwrap_or_else(|_| "Could not get error text".to_string());
+            println!("Token refresh error: Status {} - {}", status, error);
+            // Create a dummy request that will fail to generate a ReqwestError
+            return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
+        } else {
+            let token_response = response.json::<TokenResponse>().await?;
 
-        // Cache the token
-        let expires_at = Instant::now() + Duration::from_secs(token_response.expires_in - 300); // 5 min buffer
-        let access_token = token_response.access_token.clone();
+            // Cache the token
+            let expires_at = Instant::now() + Duration::from_secs(token_response.expires_in as u64 - 300); // 5 min buffer
+            let access_token = token_response.access_token.clone();
 
-        let mut token_cache = self.token_cache.write().await;
-        token_cache.insert(
-            user_id.to_string(),
-            TokenCache {
-                access_token: access_token.clone(),
-                expires_at,
-            },
-        );
+            let mut token_cache = self.token_cache.write().await;
+            token_cache.insert(
+                user_id.to_string(),
+                TokenCache {
+                    access_token: access_token.clone(),
+                    expires_at,
+                },
+            );
 
-        Ok(access_token)
+            println!("Successfully refreshed token for {}", user_id);
+            Ok(access_token)
+        }
     }
 
     // Get emails from Gmail
@@ -150,16 +177,41 @@ impl GmailClient {
             "https://gmail.googleapis.com/gmail/v1/users/{}/messages?q={}",
             user_id, query_param
         );
-
-        let response = self.http_client
+        
+        println!("Fetching Gmail messages: {}", url);
+        
+        let response = match self.http_client
             .get(&url)
             .header("Authorization", format!("Bearer {}", access_token))
             .send()
-            .await?
-            .json::<GmailMessageListResponse>()
-            .await?;
+            .await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    println!("Error fetching messages: {}", e);
+                    return Err(e);
+                }
+            };
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Could not get error text".to_string());
+            println!("Gmail API error: Status {} - {}", status, error_text);
+            // Create a dummy request that will fail to generate a ReqwestError
+            return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
+        }
 
-        Ok(response.messages.unwrap_or_default())
+        let response_data = match response.json::<GmailMessageListResponse>().await {
+            Ok(data) => data,
+            Err(e) => {
+                println!("Error parsing message list response: {}", e);
+                return Err(e);
+            }
+        };
+
+        let messages = response_data.messages.unwrap_or_default();
+        println!("Successfully fetched {} Gmail messages", messages.len());
+        
+        Ok(messages)
     }
 
     // Get message details
@@ -168,39 +220,85 @@ impl GmailClient {
             "https://gmail.googleapis.com/gmail/v1/users/{}/messages/{}",
             user_id, message_id
         );
+        
+        println!("Fetching Gmail message detail: {}", url);
 
-        let response = self.http_client
+        let response = match self.http_client
             .get(&url)
             .header("Authorization", format!("Bearer {}", access_token))
             .send()
-            .await?
-            .json::<GmailMessage>()
-            .await?;
+            .await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    println!("Error fetching message detail: {}", e);
+                    return Err(e);
+                }
+            };
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Could not get error text".to_string());
+            println!("Gmail API error: Status {} - {}", status, error_text);
+            // Create a dummy request that will fail to generate a ReqwestError
+            return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
+        }
 
-        Ok(response)
+        let message = match response.json::<GmailMessage>().await {
+            Ok(msg) => msg,
+            Err(e) => {
+                println!("Error parsing message detail response: {}", e);
+                return Err(e);
+            }
+        };
+
+        println!("Successfully fetched Gmail message {}", message_id);
+        Ok(message)
     }
 
-    // Send email via Gmail
-    pub async fn send_message(&self, user_id: &str, access_token: &str, raw_message: &str) -> Result<GmailMessage, ReqwestError> {
+    // Send a message
+    pub async fn send_message(&self, user_id: &str, access_token: &str, raw_message: String) -> Result<SendMessageResponse, ReqwestError> {
         let url = format!(
             "https://gmail.googleapis.com/gmail/v1/users/{}/messages/send",
             user_id
         );
+        
+        println!("Sending Gmail message: {} with token length {}", url, access_token.len());
 
-        let body = serde_json::json!({
+        let body = json!({
             "raw": raw_message
         });
 
-        let response = self.http_client
+        let response = match self.http_client
             .post(&url)
             .header("Authorization", format!("Bearer {}", access_token))
             .json(&body)
             .send()
-            .await?
-            .json::<GmailMessage>()
-            .await?;
+            .await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    println!("Error sending message: {}", e);
+                    return Err(e);
+                }
+            };
 
-        Ok(response)
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Could not get error text".to_string());
+            println!("Gmail API error when sending: Status {} - {}", status, error_text);
+            // Create a dummy request that will fail to generate a ReqwestError
+            return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
+        }
+
+        let send_response = match response.json::<SendMessageResponse>().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                println!("Error parsing send message response: {}", e);
+                return Err(e);
+            }
+        };
+
+        println!("Successfully sent Gmail message with ID: {}", send_response.id);
+        Ok(send_response)
     }
 }
 
@@ -316,4 +414,6 @@ fn extract_message_body(payload: &GmailPayload) -> String {
     }
     
     String::new()
-} 
+}
+
+// A simple function that returns a reqwest error with the given message

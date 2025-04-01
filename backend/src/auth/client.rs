@@ -1,7 +1,7 @@
 use std::env;
 use oauth2::{
     AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl, 
-    basic::BasicClient
+    basic::BasicClient, AuthType
 };
 
 // Create OAuth client
@@ -20,4 +20,6 @@ pub fn create_oauth_client() -> BasicClient {
         Some(TokenUrl::new("https://oauth2.googleapis.com/token".to_string()).unwrap()),
     )
         .set_redirect_uri(RedirectUrl::new(redirect_uri).unwrap())
+    // Set to use form for auth which is required for refresh token
+    .set_auth_type(AuthType::RequestBody)
 }

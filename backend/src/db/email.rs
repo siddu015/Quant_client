@@ -71,14 +71,14 @@ pub async fn get_emails_for_user(
 ) -> Result<Vec<Email>, sqlx::Error> {
     let query = if is_sender {
         r#"
-        SELECT id, sender_id, sender_email, sender_name, recipient_email, subject, body, sent_at, read_at, gmail_id
+        SELECT id::text, sender_id, sender_email, sender_name, recipient_email, subject, body, sent_at, read_at, gmail_id
         FROM emails
         WHERE sender_email = $1
         ORDER BY sent_at DESC
         "#
     } else {
         r#"
-        SELECT id, sender_id, sender_email, sender_name, recipient_email, subject, body, sent_at, read_at, gmail_id
+        SELECT id::text, sender_id, sender_email, sender_name, recipient_email, subject, body, sent_at, read_at, gmail_id
         FROM emails
         WHERE recipient_email = $1
         ORDER BY sent_at DESC
