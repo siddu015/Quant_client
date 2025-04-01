@@ -2,6 +2,9 @@ use actix_web::{web, HttpResponse, Responder};
 use serde_json::json;
 use oauth2::{AuthorizationCode, CsrfToken, Scope, TokenResponse};
 use oauth2::reqwest::async_http_client;
+use reqwest;
+use uuid;
+use actix_web::cookie::Cookie;
 
 use crate::db;
 use crate::auth;
@@ -31,81 +34,121 @@ pub async fn auth_google_callback(
     query: web::Query<AuthQuery>,
     db_pool: DbPool,
 ) -> impl Responder {
-    // Check if code is provided
-    if query.code.is_empty() {
-        println!("Error: No authorization code provided");
-        return HttpResponse::BadRequest().json(json!({
-            "error": "No authorization code provided"
-        }));
-    }
-
-    let code = AuthorizationCode::new(query.code.clone());
     let client = auth::create_oauth_client();
-
-    // Exchange the authorization code for an access token
-    let token_result = match client
+    
+    // Exchange the code for a token
+    let code = AuthorizationCode::new(query.code.clone());
+    
+    match client
         .exchange_code(code)
         .request_async(async_http_client)
-        .await {
-            Ok(token) => token,
-            Err(e) => {
-                println!("Token exchange error: {}", e);
-                return HttpResponse::InternalServerError().json(json!({
-                    "error": "Failed to exchange authorization code for token",
-                    "details": format!("{}", e)
-                }));
+        .await
+    {
+        Ok(token) => {
+            println!("Successfully exchanged auth code for token");
+            
+            // Get refresh token
+            let refresh_token = token.refresh_token().map(|t| t.secret().clone());
+            
+            if let Some(ref refresh) = refresh_token {
+                println!("Received refresh token, length: {}", refresh.len());
+            } else {
+                println!("No refresh token received! User won't be able to use Gmail API");
             }
-        };
-
-    // Get the refresh token if available
-    let refresh_token = token_result
-        .refresh_token()
-        .map(|token| token.secret().clone());
-    
-    println!("Refresh token received: {:?}", refresh_token);
-
-    // Get user info from Google
-    let user_info = match auth::get_google_user_info(token_result.access_token().secret()).await {
-        Ok(info) => info,
+            
+            // Get the access token
+            let access_token = token.access_token().secret();
+            println!("Received access token, length: {}", access_token.len());
+            
+            // Get user info from Google
+            let user_info_url = "https://www.googleapis.com/oauth2/v2/userinfo";
+            let user_info_response = reqwest::Client::new()
+                .get(user_info_url)
+                .header("Authorization", format!("Bearer {}", access_token))
+                .send()
+                .await;
+                
+            match user_info_response {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        match response.json::<GoogleUserInfo>().await {
+                            Ok(mut user_info) => {
+                                println!("Retrieved user info for: {}", user_info.email);
+                                
+                                // Add the refresh token to the user info
+                                user_info.refresh_token = refresh_token.clone();
+                                
+                                // Generate a session token
+                                let session_token = uuid::Uuid::new_v4().to_string();
+                                
+                                // Store the user and session in the database
+                                match db::store_user(
+                                    db_pool.get_ref(),
+                                    &user_info.email,
+                                    &user_info.name,
+                                    &user_info.picture,
+                                    &session_token,
+                                    &refresh_token,
+                                ).await {
+                                    Ok(_) => {
+                                        println!("Stored user session for: {}", user_info.email);
+                                        
+                                        // Create a cookie with the session token
+                                        let cookie = Cookie::build("session", session_token)
+                                            .path("/")
+                                            .max_age(actix_web::cookie::time::Duration::days(7))
+                                            .http_only(true)
+                                            .finish();
+                                            
+                                        // Redirect to the frontend with the cookie
+                                        println!("Redirecting to frontend: {}", auth::FRONTEND_URL);
+                                        HttpResponse::Found()
+                                            .cookie(cookie)
+                                            .append_header(("Location", auth::FRONTEND_URL.clone()))
+                                            .finish()
+                                    },
+                                    Err(e) => {
+                                        println!("Error storing user session: {}", e);
+                                        HttpResponse::InternalServerError().json(json!({
+                                            "error": "Database error",
+                                            "details": format!("{}", e)
+                                        }))
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                println!("Error parsing user info: {}", e);
+                                HttpResponse::InternalServerError().json(json!({
+                                    "error": "Failed to parse user info",
+                                    "details": format!("{}", e)
+                                }))
+                            }
+                        }
+                    } else {
+                        println!("Error response from Google API: {}", response.status());
+                        HttpResponse::InternalServerError().json(json!({
+                            "error": "Failed to get user info",
+                            "details": format!("Status: {}", response.status())
+                        }))
+                    }
+                },
+                Err(e) => {
+                    println!("Error requesting user info: {}", e);
+                    HttpResponse::InternalServerError().json(json!({
+                        "error": "Failed to request user info",
+                        "details": format!("{}", e)
+                    }))
+                }
+            }
+        },
         Err(e) => {
-            println!("User info error: {}", e);
-            return HttpResponse::InternalServerError().json(json!({
-                "error": "Failed to get user information from Google",
+            println!("Error exchanging code for token: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to exchange code for token",
                 "details": format!("{}", e)
-            }));
+            }))
         }
-    };
-    
-    // Generate a unique session token
-    let session_token = auth::generate_session_token();
-    
-    // Store user in database with refresh token
-    if let Err(e) = db::store_user(
-        db_pool.get_ref(),
-        &user_info.email,
-        &user_info.name,
-        &user_info.picture,
-        &session_token,
-        &refresh_token,
-    ).await {
-        println!("Database error: {}", e);
-        return HttpResponse::InternalServerError().json(json!({
-            "error": "Failed to store user information",
-            "details": format!("{}", e)
-        }));
     }
-
-    // Create session cookie
-    let cookie = auth::create_session_cookie(&session_token);
-
-    // Log successful login
-    println!("User logged in: {} ({})", user_info.name.unwrap_or_else(|| "Unknown".to_string()), user_info.email);
-
-    // Redirect to dashboard
-    HttpResponse::Found()
-        .append_header(("Location", format!("{}/dashboard", auth::FRONTEND_URL)))
-        .cookie(cookie)
-        .finish()
 }
 
 pub async fn logout() -> impl Responder {

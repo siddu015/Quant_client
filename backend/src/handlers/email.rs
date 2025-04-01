@@ -29,7 +29,7 @@ pub async fn send_email(
                     // Create raw email message in base64url format
                     let raw_message = encode_config(
                         format!(
-                            "From: {}\r\nTo: {}\r\nSubject: {}\r\n\r\n{}",
+                            "From: {}\r\nTo: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=UTF-8\r\nMIME-Version: 1.0\r\n\r\n{}",
                             email,
                             email_req.recipient_email,
                             email_req.subject,
@@ -63,11 +63,10 @@ pub async fn send_email(
                                         }
                                         Err(e) => {
                                             println!("Database error when storing sent email: {}", e);
-                                            // The email was sent but we couldn't store it
-                                            return HttpResponse::Ok().json(json!({
-                                                "success": true,
-                                                "message": "Email sent successfully but not stored in database",
-                                                "warning": format!("Database error: {}", e)
+                                            return HttpResponse::InternalServerError().json(json!({
+                                                "success": false,
+                                                "error": "Email sent but failed to store in database",
+                                                "details": format!("{}", e)
                                             }));
                                         }
                                     }
@@ -83,10 +82,10 @@ pub async fn send_email(
                             }
                         }
                         Err(e) => {
-                            println!("Error getting access token: {}", e);
+                            println!("Error getting Gmail access token: {}", e);
                             return HttpResponse::InternalServerError().json(json!({
                                 "success": false,
-                                "error": "Failed to get access token",
+                                "error": "Failed to get Gmail access token",
                                 "details": format!("{}", e)
                             }));
                         }
@@ -157,21 +156,29 @@ pub async fn get_emails(
         // Look up user by session token
         match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
             Ok(Some((email, _, _, refresh_token))) => {
+                println!("Getting emails for authenticated user: {}", email);
                 if let Some(refresh_token) = refresh_token {
+                    println!("User has refresh token, attempting to fetch emails from Gmail API");
                     // Try to get emails from Gmail API
                     match gmail_client.get_token(&email, &refresh_token).await {
                         Ok(access_token) => {
-                            // Get sent and received emails from Gmail API
-                            let mut sent_emails = Vec::new();
-                            let mut received_emails = Vec::new();
+                            println!("Successfully obtained access token for Gmail API, length: {}", access_token.len());
                             
-                            // Get received emails (inbox)
+                            let mut received_emails = Vec::new();
+                            let mut sent_emails = Vec::new();
+                            
+                            // Get received emails
+                            println!("Fetching received emails from Gmail API");
                             match gmail_client.get_messages(&email, &access_token, Some("in:inbox")).await {
-                                Ok(inbox_messages) => {
+                                Ok(received_messages) => {
+                                    println!("Received {} message IDs from Gmail API", received_messages.len());
+                                    
                                     // Get details for each message
-                                    for msg_id in &inbox_messages[0..std::cmp::min(20, inbox_messages.len())] {
+                                    for msg_id in &received_messages[0..std::cmp::min(20, received_messages.len())] {
+                                        println!("Fetching details for message ID: {}", msg_id.id);
                                         if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
                                             let (subject, sender, sender_name, recipient, body) = parse_gmail_message(&message);
+                                            println!("Parsed message: subject='{}', from='{}'", subject, sender);
                                             
                                             if !sender.is_empty() && !recipient.is_empty() {
                                                 // Create a database-style email object
@@ -190,7 +197,11 @@ pub async fn get_emails(
                                                 
                                                 // Add to received emails
                                                 received_emails.push(email_obj);
+                                            } else {
+                                                println!("Skipping message with empty sender or recipient");
                                             }
+                                        } else {
+                                            println!("Failed to fetch details for message ID: {}", msg_id.id);
                                         }
                                     }
                                 }
@@ -200,12 +211,17 @@ pub async fn get_emails(
                             }
                             
                             // Get sent emails
+                            println!("Fetching sent emails from Gmail API");
                             match gmail_client.get_messages(&email, &access_token, Some("in:sent")).await {
                                 Ok(sent_messages) => {
+                                    println!("Received {} sent message IDs from Gmail API", sent_messages.len());
+                                    
                                     // Get details for each message
                                     for msg_id in &sent_messages[0..std::cmp::min(20, sent_messages.len())] {
+                                        println!("Fetching details for sent message ID: {}", msg_id.id);
                                         if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
                                             let (subject, sender, sender_name, recipient, body) = parse_gmail_message(&message);
+                                            println!("Parsed sent message: subject='{}', to='{}'", subject, recipient);
                                             
                                             if !sender.is_empty() && !recipient.is_empty() {
                                                 // Create a database-style email object
@@ -224,7 +240,11 @@ pub async fn get_emails(
                                                 
                                                 // Add to sent emails
                                                 sent_emails.push(email_obj);
+                                            } else {
+                                                println!("Skipping sent message with empty sender or recipient");
                                             }
+                                        } else {
+                                            println!("Failed to fetch details for sent message ID: {}", msg_id.id);
                                         }
                                     }
                                 }
@@ -233,6 +253,7 @@ pub async fn get_emails(
                                 }
                             }
                             
+                            println!("Returning {} received and {} sent emails from Gmail API", received_emails.len(), sent_emails.len());
                             // Return the emails from Gmail API
                             return HttpResponse::Ok().json(json!({
                                 "success": true,
@@ -246,6 +267,8 @@ pub async fn get_emails(
                             println!("Error getting Gmail access token: {}", e);
                         }
                     }
+                } else {
+                    println!("User does not have a refresh token, falling back to database");
                 }
                 
                 // Fallback to database emails if Gmail API didn't work

@@ -19,3 +19,8 @@ Phase 1: Gmail Integration
 - Now Implementing a Gmail API integration in the backend to fetech mails from the gmail by which user loginned
 - Then go and create a frontend to see these emails, In frontend there is a dashboard for this try to link it there
 - Improve the overall UI/UX with a dark theme with better design
+
+Phase 2: Email Fetching
+
+- Create endpoints to fetch emails from Gmail API and store/cache them in your PostgreSQL database.
+- Send emails to other emails via Quant_client

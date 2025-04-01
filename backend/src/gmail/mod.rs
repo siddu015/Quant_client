@@ -20,7 +20,9 @@ pub struct TokenResponse {
 #[derive(Debug, Deserialize)]
 pub struct SendMessageResponse {
     pub id: String,
+    #[serde(rename = "threadId")]
     pub thread_id: String,
+    #[serde(rename = "labelIds")]
     pub label_ids: Option<Vec<String>>,
 }
 
@@ -28,10 +30,13 @@ pub struct SendMessageResponse {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GmailMessage {
     pub id: String,
+    #[serde(rename = "threadId")]
     pub thread_id: String,
+    #[serde(rename = "labelIds")]
     pub label_ids: Option<Vec<String>>,
     pub snippet: Option<String>,
     pub payload: Option<GmailPayload>,
+    #[serde(rename = "internalDate")]
     pub internal_date: Option<String>,
 }
 
@@ -41,6 +46,7 @@ pub struct GmailPayload {
     pub headers: Option<Vec<GmailHeader>>,
     pub parts: Option<Vec<GmailPart>>,
     pub body: Option<GmailBody>,
+    #[serde(rename = "mimeType")]
     pub mime_type: Option<String>,
 }
 
@@ -54,7 +60,9 @@ pub struct GmailHeader {
 // Gmail API message part
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GmailPart {
+    #[serde(rename = "partId")]
     pub part_id: Option<String>,
+    #[serde(rename = "mimeType")]
     pub mime_type: Option<String>,
     pub filename: Option<String>,
     pub headers: Option<Vec<GmailHeader>>,
@@ -67,6 +75,7 @@ pub struct GmailPart {
 pub struct GmailBody {
     pub size: Option<i64>,
     pub data: Option<String>,
+    #[serde(rename = "attachmentId")]
     pub attachment_id: Option<String>,
 }
 
@@ -74,7 +83,9 @@ pub struct GmailBody {
 #[derive(Debug, Deserialize)]
 pub struct GmailMessageListResponse {
     pub messages: Option<Vec<GmailMessageId>>,
+    #[serde(rename = "nextPageToken")]
     pub next_page_token: Option<String>,
+    #[serde(rename = "resultSizeEstimate")]
     pub result_size_estimate: Option<i32>,
 }
 
@@ -82,6 +93,7 @@ pub struct GmailMessageListResponse {
 #[derive(Debug, Deserialize)]
 pub struct GmailMessageId {
     pub id: String,
+    #[serde(rename = "threadId")]
     pub thread_id: String,
 }
 
@@ -200,11 +212,17 @@ impl GmailClient {
             return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
         }
 
-        let response_data = match response.json::<GmailMessageListResponse>().await {
+        // Get the response text first to debug
+        let response_text = response.text().await?;
+        println!("Gmail API response: {}", response_text);
+
+        // Then parse it
+        let response_data = match serde_json::from_str::<GmailMessageListResponse>(&response_text) {
             Ok(data) => data,
             Err(e) => {
                 println!("Error parsing message list response: {}", e);
-                return Err(e);
+                // Create a dummy request that will fail to generate a ReqwestError
+                return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
             }
         };
 
@@ -243,11 +261,17 @@ impl GmailClient {
             return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
         }
 
-        let message = match response.json::<GmailMessage>().await {
+        // Get the response text first to debug
+        let response_text = response.text().await?;
+        println!("Gmail API message detail response: {}", response_text);
+
+        // Then parse it
+        let message = match serde_json::from_str::<GmailMessage>(&response_text) {
             Ok(msg) => msg,
             Err(e) => {
                 println!("Error parsing message detail response: {}", e);
-                return Err(e);
+                // Create a dummy request that will fail to generate a ReqwestError
+                return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
             }
         };
 
