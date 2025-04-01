@@ -28,8 +28,7 @@ Phase 2: Email Fetching
 
 Phase 3: Using Cache
 
-- Try to store the fetched emails in cache
-- Use Redis for caching
-- Improve the fetching speed by using redis caching.
-- Reduce the amount of time to fetch emails from gmail. Instead of fetching all the emails from the Gmail try to fetch the most recent gmails for present to reduce the workload on database and CPU.
-- Whenever I fetch via refresh or compose the entire mails are fetching from Gmail API, instead they should be fetched from redis.
+- Added Redis client library to `Cargo.toml`
+- Created a new `cache` module with a `RedisCache` struct
+- Implemented methods for caching and retrieving emails and message IDs
+- Added proper error handling and fallback for when Redis is unavailable

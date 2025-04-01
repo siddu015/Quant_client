@@ -1,5 +1,5 @@
 // Inbox.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Email } from '../types/Email';
 import { EmailService } from '../services/EmailService';
 import EmailListItem from './EmailListItem';
@@ -16,14 +16,16 @@ const Inbox: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
+  
+  // Reference to store interval ID
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch emails on component mount and when refreshTrigger changes
-  useEffect(() => {
-    fetchEmails();
-  }, [refreshTrigger]);
-
-  const fetchEmails = async () => {
-    setIsLoading(true);
+  // Memoized fetch function to avoid recreation on each render
+  const fetchEmails = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
     setError(null);
     
     try {
@@ -34,9 +36,63 @@ const Inbox: React.FC = () => {
       setError('Failed to load emails. Please try again later.');
       console.error('Error fetching emails:', err);
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, []);
+
+  // Background refresh function
+  const backgroundRefresh = useCallback(async () => {
+    if (!isBackgroundRefreshing) {
+      setIsBackgroundRefreshing(true);
+      try {
+        console.log('Performing background refresh of emails...');
+        const { sent, received } = await EmailService.getEmails();
+        
+        // Check if we have new emails by comparing counts
+        const hasNewReceivedEmails = received.length > receivedEmails.length;
+        const hasNewSentEmails = sent.length > sentEmails.length;
+        
+        // Only update state if we have new emails
+        if (hasNewReceivedEmails || hasNewSentEmails) {
+          console.log('New emails detected, updating view');
+          setSentEmails(sent);
+          setReceivedEmails(received);
+        }
+      } catch (err) {
+        console.error('Background refresh error:', err);
+        // Don't show error to user during background refresh
+      } finally {
+        setIsBackgroundRefreshing(false);
+      }
+    }
+  }, [isBackgroundRefreshing, receivedEmails.length, sentEmails.length]);
+
+  // Setup periodic refresh when component mounts
+  useEffect(() => {
+    // Initial fetch
+    fetchEmails();
+    
+    // Set up interval for background refresh (every 30 seconds)
+    refreshIntervalRef.current = setInterval(() => {
+      backgroundRefresh();
+    }, 30000);
+    
+    // Clean up interval on unmount
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+    };
+  }, [fetchEmails, backgroundRefresh]);
+
+  // Refresh emails when refreshTrigger changes
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      fetchEmails();
+    }
+  }, [refreshTrigger, fetchEmails]);
 
   const handleSelectEmail = async (email: Email) => {
     setSelectedEmail(email);

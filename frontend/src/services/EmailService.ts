@@ -67,6 +67,13 @@ export const EmailService = {
       }
       
       const data = await response.json();
+      
+      // If the email was sent successfully, immediately fetch fresh emails
+      if (data.success) {
+        // Force a refresh immediately after sending to get the latest emails
+        await this.refreshEmails();
+      }
+      
       return data.success;
     } catch (error) {
       console.error('Error sending email:', error);

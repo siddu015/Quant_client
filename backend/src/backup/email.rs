@@ -199,6 +199,7 @@ pub async fn get_emails(
                         let email_clone = email.clone();
                         let gmail_client_clone = gmail_client.clone();
                         let redis_cache_clone = redis_cache.clone();
+                        let db_pool_clone = db_pool.clone();
                         
                         // Spawn a background task to refresh the cache
                         tokio::spawn(async move {
@@ -206,41 +207,17 @@ pub async fn get_emails(
                             
                             // Check if new emails are available
                             if let Ok(token) = gmail_client_clone.get_token(&email_clone, &refresh_token).await {
-                                // Get received messages from Gmail API
-                                if let Ok(messages) = gmail_client_clone.get_messages(&email_clone, &token, Some("in:inbox")).await {
-                                    println!("Retrieved {} inbox messages in background refresh", messages.len());
-                                    
+                                // Get messages from Gmail API
+                                if let Ok(messages) = gmail_client_clone.get_messages(&email_clone, &token, "in:inbox", "20").await {
                                     // Process received messages
-                                    let mut received_emails = Vec::new();
-                                    let limit = std::cmp::min(20, messages.len());
-                                    
-                                    for msg_id in &messages[0..limit] {
-                                        if let Ok(message) = gmail_client_clone.get_message_detail(&email_clone, &token, &msg_id.id).await {
-                                            let (subject, sender, sender_name, recipient, body) = parse_gmail_message(&message);
-                                            
-                                            if !sender.is_empty() && !recipient.is_empty() {
-                                                // Create a database-style email object
-                                                let email_obj = crate::models::Email {
-                                                    id: Uuid::new_v4().to_string(),
-                                                    sender_id: sender.clone(),
-                                                    sender_email: sender,
-                                                    sender_name: Some(sender_name),
-                                                    recipient_email: recipient,
-                                                    subject,
-                                                    body,
-                                                    sent_at: message.internal_date.unwrap_or_else(|| "".to_string()),
-                                                    read_at: None, // Assume inbox emails are unread
-                                                    gmail_id: Some(message.id.clone()),
-                                                };
-                                                
-                                                // Cache individual email
-                                                let _ = redis_cache_clone.cache_email(&email_clone, &message.id, &email_obj).await;
-                                                
-                                                // Add to received emails
-                                                received_emails.push(email_obj);
-                                            }
-                                        }
-                                    }
+                                    let received_emails = process_gmail_messages(
+                                        &email_clone,
+                                        &token,
+                                        messages,
+                                        &gmail_client_clone,
+                                        &redis_cache_clone,
+                                        false, // inbox messages
+                                    ).await;
                                     
                                     // Cache the processed messages if we got any
                                     if !received_emails.is_empty() {
@@ -250,40 +227,16 @@ pub async fn get_emails(
                                 }
                                 
                                 // Get sent messages
-                                if let Ok(sent_messages) = gmail_client_clone.get_messages(&email_clone, &token, Some("in:sent")).await {
-                                    println!("Retrieved {} sent messages in background refresh", sent_messages.len());
-                                    
+                                if let Ok(sent_messages) = gmail_client_clone.get_messages(&email_clone, &token, "in:sent", "10").await {
                                     // Process sent messages
-                                    let mut sent_emails = Vec::new();
-                                    let limit = std::cmp::min(10, sent_messages.len());
-                                    
-                                    for msg_id in &sent_messages[0..limit] {
-                                        if let Ok(message) = gmail_client_clone.get_message_detail(&email_clone, &token, &msg_id.id).await {
-                                            let (subject, sender, sender_name, recipient, body) = parse_gmail_message(&message);
-                                            
-                                            if !sender.is_empty() && !recipient.is_empty() {
-                                                // Create a database-style email object
-                                                let email_obj = crate::models::Email {
-                                                    id: Uuid::new_v4().to_string(),
-                                                    sender_id: sender.clone(),
-                                                    sender_email: sender,
-                                                    sender_name: Some(sender_name),
-                                                    recipient_email: recipient,
-                                                    subject,
-                                                    body,
-                                                    sent_at: message.internal_date.unwrap_or_else(|| "".to_string()),
-                                                    read_at: Some("2023-01-01T00:00:00Z".to_string()), // Assume sent emails are read
-                                                    gmail_id: Some(message.id.clone()),
-                                                };
-                                                
-                                                // Cache individual email
-                                                let _ = redis_cache_clone.cache_email(&email_clone, &message.id, &email_obj).await;
-                                                
-                                                // Add to sent emails
-                                                sent_emails.push(email_obj);
-                                            }
-                                        }
-                                    }
+                                    let sent_emails = process_gmail_messages(
+                                        &email_clone,
+                                        &token,
+                                        sent_messages,
+                                        &gmail_client_clone,
+                                        &redis_cache_clone,
+                                        true, // sent messages
+                                    ).await;
                                     
                                     // Cache the processed messages if we got any
                                     if !sent_emails.is_empty() {
@@ -688,4 +641,4 @@ pub async fn get_email(
         "success": false,
         "error": "Not authenticated"
     }))
-} 
+}

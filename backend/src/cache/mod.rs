@@ -5,8 +5,8 @@ use crate::models::Email;
 use crate::gmail::GmailMessageId;
 
 // Constants for cache TTL
-const EMAIL_CACHE_TTL: usize = 3600; // 1 hour
-const MESSAGE_LIST_CACHE_TTL: usize = 600; // 10 minutes
+const EMAIL_CACHE_TTL: usize = 900; // 15 minutes (reduced from 1 hour)
+const MESSAGE_LIST_CACHE_TTL: usize = 300; // 5 minutes (reduced from 10 minutes)
 
 pub struct RedisCache {
     client: Client,
