@@ -73,4 +73,27 @@ export const EmailService = {
       return false;
     }
   },
+  
+  // Force refresh emails from Gmail API
+  async refreshEmails(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_URL}/api/emails/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to refresh emails: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data.success;
+    } catch (error) {
+      console.error('Error refreshing emails:', error);
+      return false;
+    }
+  },
 };

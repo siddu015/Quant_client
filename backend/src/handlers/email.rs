@@ -2,13 +2,16 @@ use actix_web::{web, HttpResponse, Responder, HttpRequest};
 use serde_json::json;
 use uuid::Uuid;
 use base64::{encode_config, STANDARD};
+use std::env;
 
 use crate::db;
 use crate::models::SendEmailRequest;
 use crate::gmail::{GmailClient, parse_gmail_message};
+use crate::cache::RedisCache;
 
 type DbPool = web::Data<sqlx::PgPool>;
 type GmailClientData = web::Data<std::sync::Arc<GmailClient>>;
+type RedisCacheData = web::Data<std::sync::Arc<RedisCache>>;
 
 // Send a new email
 pub async fn send_email(
@@ -148,6 +151,7 @@ pub async fn get_emails(
     req: HttpRequest,
     db_pool: DbPool,
     gmail_client: GmailClientData,
+    redis_cache: RedisCacheData,
 ) -> impl Responder {
     // Check if user is authenticated
     if let Some(cookie) = req.cookie("session") {
@@ -157,6 +161,42 @@ pub async fn get_emails(
         match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
             Ok(Some((email, _, _, refresh_token))) => {
                 println!("Getting emails for authenticated user: {}", email);
+                
+                // First try to get emails from Redis cache
+                let mut use_cache = true;
+                
+                // Check cache for received emails
+                let cached_received = match redis_cache.get_cached_emails(&email, "received").await {
+                    Ok(Some(emails)) => emails,
+                    _ => {
+                        // No cached received emails
+                        use_cache = false;
+                        Vec::new()
+                    }
+                };
+                
+                // Check cache for sent emails
+                let cached_sent = match redis_cache.get_cached_emails(&email, "sent").await {
+                    Ok(Some(emails)) => emails,
+                    _ => {
+                        // No cached sent emails
+                        use_cache = false;
+                        Vec::new()
+                    }
+                };
+                
+                // If we have both sent and received emails in cache, return them
+                if use_cache {
+                    println!("Using cached emails: {} sent, {} received", cached_sent.len(), cached_received.len());
+                    return HttpResponse::Ok().json(json!({
+                        "success": true,
+                        "sent": cached_sent,
+                        "received": cached_received,
+                        "source": "cache"
+                    }));
+                }
+                
+                // If no cache or refresh requested, try to get from Gmail API
                 if let Some(refresh_token) = refresh_token {
                     println!("User has refresh token, attempting to fetch emails from Gmail API");
                     // Try to get emails from Gmail API
@@ -167,14 +207,18 @@ pub async fn get_emails(
                             let mut received_emails = Vec::new();
                             let mut sent_emails = Vec::new();
                             
-                            // Get received emails
+                            // Get received emails (limited to recent messages)
                             println!("Fetching received emails from Gmail API");
                             match gmail_client.get_messages(&email, &access_token, Some("in:inbox")).await {
                                 Ok(received_messages) => {
                                     println!("Received {} message IDs from Gmail API", received_messages.len());
                                     
-                                    // Get details for each message
-                                    for msg_id in &received_messages[0..std::cmp::min(20, received_messages.len())] {
+                                    // Cache message IDs
+                                    let _ = redis_cache.cache_message_ids(&email, "in:inbox", &received_messages).await;
+                                    
+                                    // Get details for each message (only recent ones - last 20)
+                                    let limit = std::cmp::min(20, received_messages.len());
+                                    for msg_id in &received_messages[0..limit] {
                                         println!("Fetching details for message ID: {}", msg_id.id);
                                         if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
                                             let (subject, sender, sender_name, recipient, body) = parse_gmail_message(&message);
@@ -195,6 +239,9 @@ pub async fn get_emails(
                                                     gmail_id: Some(message.id.clone()),
                                                 };
                                                 
+                                                // Cache individual email
+                                                let _ = redis_cache.cache_email(&email, &message.id, &email_obj).await;
+                                                
                                                 // Add to received emails
                                                 received_emails.push(email_obj);
                                             } else {
@@ -204,20 +251,27 @@ pub async fn get_emails(
                                             println!("Failed to fetch details for message ID: {}", msg_id.id);
                                         }
                                     }
+                                    
+                                    // Cache the complete list of received emails
+                                    let _ = redis_cache.cache_emails(&email, "received", &received_emails).await;
                                 }
                                 Err(e) => {
                                     println!("Error fetching received emails from Gmail API: {}", e);
                                 }
                             }
                             
-                            // Get sent emails
+                            // Get sent emails (limited to recent messages)
                             println!("Fetching sent emails from Gmail API");
                             match gmail_client.get_messages(&email, &access_token, Some("in:sent")).await {
                                 Ok(sent_messages) => {
                                     println!("Received {} sent message IDs from Gmail API", sent_messages.len());
                                     
-                                    // Get details for each message
-                                    for msg_id in &sent_messages[0..std::cmp::min(20, sent_messages.len())] {
+                                    // Cache message IDs
+                                    let _ = redis_cache.cache_message_ids(&email, "in:sent", &sent_messages).await;
+                                    
+                                    // Get details for each message (only recent ones - last 20)
+                                    let limit = std::cmp::min(20, sent_messages.len());
+                                    for msg_id in &sent_messages[0..limit] {
                                         println!("Fetching details for sent message ID: {}", msg_id.id);
                                         if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
                                             let (subject, sender, sender_name, recipient, body) = parse_gmail_message(&message);
@@ -238,6 +292,9 @@ pub async fn get_emails(
                                                     gmail_id: Some(message.id.clone()),
                                                 };
                                                 
+                                                // Cache individual email
+                                                let _ = redis_cache.cache_email(&email, &message.id, &email_obj).await;
+                                                
                                                 // Add to sent emails
                                                 sent_emails.push(email_obj);
                                             } else {
@@ -247,6 +304,9 @@ pub async fn get_emails(
                                             println!("Failed to fetch details for sent message ID: {}", msg_id.id);
                                         }
                                     }
+                                    
+                                    // Cache the complete list of sent emails
+                                    let _ = redis_cache.cache_emails(&email, "sent", &sent_emails).await;
                                 }
                                 Err(e) => {
                                     println!("Error fetching sent emails from Gmail API: {}", e);
@@ -279,6 +339,10 @@ pub async fn get_emails(
                 
                 match (sent_result, received_result) {
                     (Ok(sent), Ok(received)) => {
+                        // Cache database emails as well
+                        let _ = redis_cache.cache_emails(&email, "sent", &sent).await;
+                        let _ = redis_cache.cache_emails(&email, "received", &received).await;
+                        
                         return HttpResponse::Ok().json(json!({
                             "success": true,
                             "sent": sent,
@@ -320,12 +384,60 @@ pub async fn get_emails(
     }))
 }
 
+// Force refresh emails from Gmail API
+pub async fn refresh_emails(
+    req: HttpRequest,
+    redis_cache: RedisCacheData,
+) -> impl Responder {
+    // Check if user is authenticated
+    if let Some(cookie) = req.cookie("session") {
+        let session_token = cookie.value().to_string();
+        
+        // Extract user email from cookie (this should be done via DB lookup in production)
+        let email = match db::get_user_by_session(&web::Data::new(sqlx::PgPool::connect(&env::var("DATABASE_URL").unwrap()).await.unwrap()), &session_token).await {
+            Ok(Some((email, _, _, _))) => email,
+            _ => {
+                return HttpResponse::Unauthorized().json(json!({
+                    "success": false,
+                    "error": "Invalid session"
+                }));
+            }
+        };
+        
+        // Invalidate cache for this user
+        match redis_cache.invalidate_user_cache(&email).await {
+            Ok(_) => {
+                println!("Cache invalidated for user {}", email);
+                HttpResponse::Ok().json(json!({
+                    "success": true,
+                    "message": "Email cache refreshed. Please fetch emails again."
+                }))
+            },
+            Err(e) => {
+                println!("Error invalidating cache for user {}: {}", email, e);
+                HttpResponse::InternalServerError().json(json!({
+                    "success": false,
+                    "error": "Failed to refresh cache",
+                    "details": format!("{}", e)
+                }))
+            }
+        }
+    } else {
+        // No session cookie found
+        HttpResponse::Unauthorized().json(json!({
+            "success": false,
+            "error": "Not authenticated"
+        }))
+    }
+}
+
 // Get a specific email by ID
 pub async fn get_email(
     req: HttpRequest,
     path: web::Path<String>,
     db_pool: DbPool,
     gmail_client: GmailClientData,
+    redis_cache: RedisCacheData,
 ) -> impl Responder {
     let email_id = path.into_inner();
     
@@ -336,7 +448,25 @@ pub async fn get_email(
         // Look up user by session token
         match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
             Ok(Some((email, _, _, refresh_token))) => {
-                // First check if this is a Gmail ID (starts with numbers/letters, not UUID format)
+                // First try to get from cache if it's a Gmail ID
+                if let Some(gmail_id) = email_id.strip_prefix("gmail_") {
+                    match redis_cache.get_cached_email(&email, gmail_id).await {
+                        Ok(Some(cached_email)) => {
+                            println!("Retrieved email {} from cache", gmail_id);
+                            return HttpResponse::Ok().json(json!({
+                                "success": true,
+                                "email": cached_email,
+                                "source": "cache"
+                            }));
+                        },
+                        _ => {
+                            println!("Email {} not found in cache", gmail_id);
+                            // Continue to try other methods
+                        }
+                    }
+                }
+                
+                // Check if this is a Gmail ID (starts with numbers/letters, not UUID format)
                 if let Some(refresh_token) = refresh_token {
                     // Check if this looks like a Gmail ID (not a UUID)
                     if !email_id.contains('-') {
@@ -361,6 +491,9 @@ pub async fn get_email(
                                                 read_at: None,
                                                 gmail_id: Some(message.id.clone()),
                                             };
+                                            
+                                            // Cache the email
+                                            let _ = redis_cache.cache_email(&email, &message.id, &email_obj).await;
                                             
                                             return HttpResponse::Ok().json(json!({
                                                 "success": true,
@@ -391,6 +524,11 @@ pub async fn get_email(
                             // Mark as read if user is recipient and email is not read yet
                             if found_email.recipient_email == email && found_email.read_at.is_none() {
                                 // In a real implementation, we would update the read status
+                            }
+                            
+                            // Cache the email if it has a Gmail ID
+                            if let Some(ref gmail_id) = found_email.gmail_id {
+                                let _ = redis_cache.cache_email(&email, gmail_id, &found_email).await;
                             }
                             
                             return HttpResponse::Ok().json(json!({

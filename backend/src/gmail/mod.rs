@@ -90,7 +90,7 @@ pub struct GmailMessageListResponse {
 }
 
 // Gmail API message ID
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GmailMessageId {
     pub id: String,
     #[serde(rename = "threadId")]

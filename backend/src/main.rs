@@ -11,6 +11,7 @@ mod db;
 mod auth;
 mod handlers;
 mod gmail;
+mod cache;
 
 // Main function
 #[actix_web::main]
@@ -34,6 +35,9 @@ async fn main() -> std::io::Result<()> {
     // Create Gmail client
     let gmail_client = gmail::create_gmail_client();
     
+    // Create Redis cache
+    let redis_cache = cache::create_redis_cache();
+    
     // Server setup
     let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let bind_address = format!("0.0.0.0:{}", port);
@@ -52,6 +56,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(gmail_client.clone()))
+            .app_data(web::Data::new(redis_cache.clone()))
             .wrap(cors)
             // Base routes
             .route("/", web::get().to(handlers::welcome))
@@ -64,6 +69,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/emails", web::get().to(handlers::get_emails))
             .route("/api/emails", web::post().to(handlers::send_email))
             .route("/api/emails/{id}", web::get().to(handlers::get_email))
+            // Cache control routes
+            .route("/api/emails/refresh", web::post().to(handlers::refresh_emails))
             // Admin routes
             .route("/admin/users", web::get().to(handlers::list_users))
     })

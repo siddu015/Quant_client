@@ -23,4 +23,13 @@ Phase 1: Gmail Integration
 Phase 2: Email Fetching
 
 - Create endpoints to fetch emails from Gmail API and store/cache them in your PostgreSQL database.
-- Send emails to other emails via Quant_client
+- Send emails via Gmail API
+- Store the results in your local database as a backup
+
+Phase 3: Using Cache
+
+- Try to store the fetched emails in cache
+- Use Redis for caching
+- Improve the fetching speed by using redis caching.
+- Reduce the amount of time to fetch emails from gmail. Instead of fetching all the emails from the Gmail try to fetch the most recent gmails for present to reduce the workload on database and CPU.
+- Whenever I fetch via refresh or compose the entire mails are fetching from Gmail API, instead they should be fetched from redis.
