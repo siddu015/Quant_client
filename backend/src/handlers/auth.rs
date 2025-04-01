@@ -17,6 +17,8 @@ pub async fn auth_google() -> impl Responder {
         .add_scope(Scope::new("profile".to_string()))
         .add_scope(Scope::new("email".to_string()))
         .add_scope(Scope::new("https://www.googleapis.com/auth/gmail.readonly".to_string()))
+        .add_scope(Scope::new("https://www.googleapis.com/auth/gmail.send".to_string()))
+        .add_scope(Scope::new("https://www.googleapis.com/auth/gmail.modify".to_string()))
         .url();
 
     HttpResponse::Found().append_header(("Location", auth_url.to_string())).finish()
@@ -52,6 +54,11 @@ pub async fn auth_google_callback(
             }
         };
 
+    // Get the refresh token if available
+    let refresh_token = token_result
+        .refresh_token()
+        .map(|token| token.secret().clone());
+
     // Get user info from Google
     let user_info = match auth::get_google_user_info(token_result.access_token().secret()).await {
         Ok(info) => info,
@@ -67,13 +74,14 @@ pub async fn auth_google_callback(
     // Generate a unique session token
     let session_token = auth::generate_session_token();
     
-    // Store user in database
+    // Store user in database with refresh token
     if let Err(e) = db::store_user(
         db_pool.get_ref(),
         &user_info.email,
         &user_info.name,
         &user_info.picture,
         &session_token,
+        &refresh_token,
     ).await {
         println!("Database error: {}", e);
         return HttpResponse::InternalServerError().json(json!({

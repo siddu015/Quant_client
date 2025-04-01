@@ -1,14 +1,15 @@
 // Email.ts
 export interface Email {
-  id: number;
+  id: string;
   sender_id: string;
   sender_email: string;
+  sender_name?: string;
   recipient_email: string;
   subject: string;
   body: string;
   sent_at: string;
   read_at: string | null;
-  status: string;
+  gmail_id?: string;
 }
 
 export interface SendEmailRequest {

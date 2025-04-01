@@ -10,6 +10,7 @@ mod models;
 mod db;
 mod auth;
 mod handlers;
+mod gmail;
 
 // Main function
 #[actix_web::main]
@@ -30,6 +31,9 @@ async fn main() -> std::io::Result<()> {
     
     db::init(&pool).await.expect("Failed to initialize database");
     
+    // Create Gmail client
+    let gmail_client = gmail::create_gmail_client();
+    
     // Server setup
     let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let bind_address = format!("0.0.0.0:{}", port);
@@ -47,6 +51,7 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(gmail_client.clone()))
             .wrap(cors)
             // Base routes
             .route("/", web::get().to(handlers::welcome))

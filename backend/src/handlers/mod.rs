@@ -1,13 +1,13 @@
-// Import and re-export components
+// Import handlers from modules
 mod welcome;
 mod auth;
 mod user;
-mod admin;
 mod email;
+mod admin;
 
-// Re-export public items
+// Export handlers from modules
 pub use welcome::welcome;
 pub use auth::{auth_google, auth_google_callback, logout};
 pub use user::get_user_info;
-pub use admin::list_users;
 pub use email::{send_email, get_emails, get_email};
+pub use admin::list_users;

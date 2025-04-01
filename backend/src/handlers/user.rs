@@ -12,7 +12,7 @@ pub async fn get_user_info(req: HttpRequest, db_pool: DbPool) -> impl Responder 
         
         // Look up user by session token
         match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
-            Ok(Some((email, name, picture))) => {
+            Ok(Some((email, name, picture, _refresh_token))) => {
                 println!("User authenticated: {}", email);
                 return HttpResponse::Ok().json(UserResponse {
                     authenticated: true,

@@ -7,19 +7,23 @@ pub async fn store_user(
     name: &Option<String>,
     picture: &Option<String>,
     session_token: &str,
+    refresh_token: &Option<String>,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
-        INSERT INTO users (email, name, picture, session_token)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO users (email, name, picture, session_token, refresh_token)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (email) DO UPDATE
-        SET name = $2, picture = $3, session_token = $4, updated_at = NOW()
+        SET name = $2, picture = $3, session_token = $4, 
+            refresh_token = CASE WHEN $5 IS NOT NULL THEN $5 ELSE users.refresh_token END,
+            updated_at = NOW()
         "#
     )
     .bind(email)
     .bind(name)
     .bind(picture)
     .bind(session_token)
+    .bind(refresh_token)
     .execute(pool)
     .await?;
     
@@ -30,10 +34,10 @@ pub async fn store_user(
 pub async fn get_user_by_session(
     pool: &PgPool,
     session_token: &str,
-) -> Result<Option<(String, Option<String>, Option<String>)>, sqlx::Error> {
+) -> Result<Option<(String, Option<String>, Option<String>, Option<String>)>, sqlx::Error> {
     let row = sqlx::query(
         r#"
-        SELECT email, name, picture FROM users
+        SELECT email, name, picture, refresh_token FROM users
         WHERE session_token = $1
         "#
     )
@@ -45,7 +49,26 @@ pub async fn get_user_by_session(
         r.get("email"),
         r.get("name"),
         r.get("picture"),
+        r.get("refresh_token"),
     )))
+}
+
+// Get user refresh token by email
+pub async fn get_user_refresh_token(
+    pool: &PgPool,
+    email: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT refresh_token FROM users
+        WHERE email = $1
+        "#
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await?;
+    
+    Ok(row.and_then(|r| r.get("refresh_token")))
 }
 
 // List all users (for debugging)

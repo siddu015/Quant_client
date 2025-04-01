@@ -11,6 +11,7 @@ pub async fn init(pool: &PgPool) -> Result<(), sqlx::Error> {
             name TEXT,
             picture TEXT,
             session_token TEXT,
+            refresh_token TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
