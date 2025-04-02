@@ -1,0 +1,157 @@
+warning: unused import: `EmailPreview`
+  --> src/models/mod.rs:10:42
+   |
+10 | pub use email::{Email, SendEmailRequest, EmailPreview, EmailFilter, SortField, SortOrder};
+   |                                          ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `labels::init_labels_table`
+  --> src/db/mod.rs:18:9
+   |
+18 | pub use labels::init_labels_table;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `create_session_cookie` and `generate_session_token`
+ --> src/auth/mod.rs:8:19
+  |
+8 | pub use session::{generate_session_token, create_session_cookie, create_logout_cookie};
+  |                   ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `get_google_user_info`
+ --> src/auth/mod.rs:9:32
+  |
+9 | pub use google::{FRONTEND_URL, get_google_user_info};
+  |                                ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::models::GmailLabel`
+ --> src/handlers/label.rs:7:5
+  |
+7 | use crate::models::GmailLabel;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `LabelColor`
+ --> src/gmail/mod.rs:8:33
+  |
+8 | use crate::models::{GmailLabel, LabelColor};
+  |                                 ^^^^^^^^^^
+
+warning: unused variable: `user_email`
+   --> src/handlers/email.rs:741:50
+    |
+741 | fn process_gmail_message(message: &GmailMessage, user_email: &str) -> Option<crate::models::Email> {
+    |                                                  ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_user_email`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: function `get_user_refresh_token` is never used
+  --> src/db/users.rs:57:14
+   |
+57 | pub async fn get_user_refresh_token(
+   |              ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `add_labels_to_email` is never used
+   --> src/db/email.rs:260:14
+    |
+260 | pub async fn add_labels_to_email(
+    |              ^^^^^^^^^^^^^^^^^^^
+
+warning: function `remove_label_from_email` is never used
+   --> src/db/email.rs:293:14
+    |
+293 | pub async fn remove_label_from_email(
+    |              ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `generate_session_token` is never used
+ --> src/auth/session.rs:5:8
+  |
+5 | pub fn generate_session_token() -> String {
+  |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `create_session_cookie` is never used
+  --> src/auth/session.rs:10:8
+   |
+10 | pub fn create_session_cookie(session_token: &str) -> Cookie<'static> {
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_google_user_info` is never used
+ --> src/auth/google.rs:7:14
+  |
+7 | pub async fn get_google_user_info(access_token: &str) -> Result<GoogleUserInfo, reqwest::Error> {
+  |              ^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `token_type` and `refresh_token` are never read
+  --> src/gmail/mod.rs:15:9
+   |
+12 | pub struct TokenResponse {
+   |            ------------- fields in this struct
+...
+15 |     pub token_type: String,
+   |         ^^^^^^^^^^
+16 |     #[serde(skip_serializing_if = "Option::is_none")]
+17 |     pub refresh_token: Option<String>,
+   |         ^^^^^^^^^^^^^
+   |
+   = note: `TokenResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: fields `thread_id` and `label_ids` are never read
+  --> src/gmail/mod.rs:25:9
+   |
+22 | pub struct SendMessageResponse {
+   |            ------------------- fields in this struct
+...
+25 |     pub thread_id: String,
+   |         ^^^^^^^^^
+26 |     #[serde(rename = "labelIds")]
+27 |     pub label_ids: Option<Vec<String>>,
+   |         ^^^^^^^^^
+   |
+   = note: `SendMessageResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: fields `next_page_token` and `result_size_estimate` are never read
+  --> src/gmail/mod.rs:88:9
+   |
+85 | pub struct GmailMessageListResponse {
+   |            ------------------------ fields in this struct
+...
+88 |     pub next_page_token: Option<String>,
+   |         ^^^^^^^^^^^^^^^
+89 |     #[serde(rename = "resultSizeEstimate")]
+90 |     pub result_size_estimate: Option<i32>,
+   |         ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `GmailMessageListResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: constant `MESSAGE_LIST_CACHE_TTL` is never used
+  --> src/cache/mod.rs:11:7
+   |
+11 | const MESSAGE_LIST_CACHE_TTL: usize = 300; // 5 minutes
+   |       ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `cache_message_ids` and `get_cached_message_ids` are never used
+  --> src/cache/mod.rs:54:18
+   |
+20 | impl RedisCache {
+   | --------------- methods in this implementation
+...
+54 |     pub async fn cache_message_ids(&self, user_id: &str, query: &str, messages: &[GmailMessageId]) -...
+   |                  ^^^^^^^^^^^^^^^^^
+...
+90 |     pub async fn get_cached_message_ids(&self, user_id: &str, query: &str) -> Result<Option<Vec<Gmai...
+   |                  ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: call to `.clone()` on a reference in this situation does nothing
+   --> src/handlers/auth.rs:107:91
+    |
+107 | ...                   .append_header(("Location", auth::FRONTEND_URL.clone()))
+    |                                                                     ^^^^^^^^ help: remove this redundant call
+    |
+    = note: the type `str` does not implement `Clone`, so calling `clone` on `&str` copies the reference, which does not do anything and can be removed
+    = note: `#[warn(noop_method_call)]` on by default
+
+warning: `quantum-email-backend` (bin "quantum-email-backend") generated 19 warnings (run `cargo fix --bin "quantum-email-backend"` to apply 7 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.38s
+     Running `target/debug/quantum-email-backend`
+Error: Os { code: 2, kind: NotFound, message: "No such file or directory" }
