@@ -1,6 +1,7 @@
 // EmailDetail.tsx
 import React from 'react';
 import { Email } from '../types/Email';
+import { useAuth } from '../AuthContext';
 
 interface EmailDetailProps {
   email: Email;
@@ -8,6 +9,9 @@ interface EmailDetailProps {
 }
 
 const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
+  const { userEmail } = useAuth();
+  const isSentEmail = email.sender_email === userEmail;
+
   // Format date for display
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A';
@@ -43,72 +47,54 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
   const senderAvatarColor = getAvatarColor(email.sender_email);
 
   return (
-    <div className="bg-gray-900 rounded-lg shadow-xl overflow-hidden w-full">
-      <div className="p-4 bg-gray-800 border-b border-gray-700 flex items-center">
+    <div className="bg-gray-900/30 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-gray-800/50">
+      {/* Header */}
+      <div className="p-4 bg-gray-800/30 border-b border-gray-800/50 flex justify-between items-center">
         <button
           onClick={onBack}
-          className="text-gray-400 hover:text-white flex items-center transition-colors duration-200 mr-4"
-          aria-label="Back to inbox"
+          className="bg-gray-800/50 hover:bg-gray-700/50 text-gray-200 p-2 rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/10"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
         </button>
-        <h2 className="text-white text-lg font-semibold truncate flex-1">
-          {email.subject}
-        </h2>
+        <div className="flex items-center space-x-2">
+          <span className={`px-3 py-1 rounded-xl text-sm ${isSentEmail ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
+            {isSentEmail ? 'Sent' : 'Received'}
+          </span>
+          {email.read_at && !isSentEmail && (
+            <span className="bg-gray-700/50 text-gray-400 px-3 py-1 rounded-xl text-sm">
+              Read
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="p-5">
-        <div className="flex items-start mb-6">
-          <div className={`flex-shrink-0 w-10 h-10 rounded-full ${senderAvatarColor} flex items-center justify-center text-white font-medium mr-3`}>
-            {getInitial(email.sender_email)}
+      {/* Email content */}
+      <div className="p-6">
+        <div className="flex items-start space-x-4">
+          <div className={`flex-shrink-0 w-12 h-12 rounded-xl ${isSentEmail ? 'bg-purple-500/50' : 'bg-blue-500/50'} flex items-center justify-center text-white font-medium text-lg`}>
+            {(isSentEmail ? email.recipient_email : email.sender_email).charAt(0).toUpperCase()}
           </div>
-          
-          <div className="flex-1">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between">
               <div>
-                <p className="text-white font-medium">{email.sender_email}</p>
-                <p className="text-gray-400 text-sm">
-                  To: <span className="text-gray-300">{email.recipient_email}</span>
-                </p>
+                <h2 className="text-xl font-semibold text-gray-200 mb-2">{email.subject}</h2>
+                <div className="flex items-center space-x-2 text-sm text-gray-400">
+                  <span>From: {email.sender_email}</span>
+                  <span>•</span>
+                  <span>To: {email.recipient_email}</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {formatDate(email.sent_at)}
+                </div>
               </div>
-              <p className="text-gray-400 text-sm mt-2 sm:mt-0">
-                {formatDate(email.sent_at)}
-              </p>
             </div>
           </div>
         </div>
-        
-        <div className="bg-gray-800/50 rounded-lg p-5 mt-2">
-          <div className="text-gray-300 whitespace-pre-wrap leading-relaxed">
-            {email.body}
-          </div>
-        </div>
-        
-        <div className="mt-6 flex justify-between">
-          <button
-            onClick={onBack}
-            className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Inbox
-          </button>
-          
-          <button
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center"
-            onClick={() => {
-              // In a real app, we would implement reply functionality
-              alert('Reply functionality would be implemented here');
-            }}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-            </svg>
-            Reply
-          </button>
+
+        <div className="mt-8 bg-gray-800/20 rounded-xl p-6 text-gray-300 whitespace-pre-wrap">
+          {email.body}
         </div>
       </div>
     </div>

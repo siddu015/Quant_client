@@ -1,10 +1,15 @@
 // Dashboard.tsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import Inbox from './components/Inbox';
+import ComposeEmail from './components/ComposeEmail';
+import { EmailService } from './services/EmailService';
 
 function Dashboard() {
     const { isAuthenticated, userEmail, userName, userPicture, isLoading, checkAuthStatus, logout } = useAuth();
+    const [activeSection, setActiveSection] = useState<'inbox' | 'sent' | 'drafts' | 'quantum'>('inbox');
+    const [isComposing, setIsComposing] = useState(false);
+    const [shouldRefresh, setShouldRefresh] = useState(0);
 
     useEffect(() => {
         // Check authentication status when component mounts
@@ -17,6 +22,22 @@ function Dashboard() {
             window.location.href = '/';
         }
     }, [isLoading, isAuthenticated]);
+
+    const handleSendEmail = async (email: { recipient: string; subject: string; body: string }) => {
+        try {
+            await EmailService.sendEmail({
+                recipient_email: email.recipient,
+                subject: email.subject,
+                body: email.body
+            });
+            setIsComposing(false);
+            // Trigger a refresh of the emails list
+            setShouldRefresh(prev => prev + 1);
+        } catch (err) {
+            console.error('Error sending email:', err);
+            // You might want to show an error message to the user here
+        }
+    };
 
     if (isLoading) {
         return (
@@ -34,7 +55,7 @@ function Dashboard() {
     }
 
     return (
-        <div className="bg-[#0a0b0e] min-h-screen text-gray-100 relative overflow-hidden">
+        <div className="relative min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
             {/* Background gradient effects */}
             <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 to-purple-900/20 pointer-events-none"></div>
             <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMjEyMTIxIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-5 pointer-events-none"></div>
@@ -122,36 +143,64 @@ function Dashboard() {
                             <nav className="p-4">
                                 <ul className="space-y-2">
                                     <li>
-                                        <a href="#inbox" className="flex items-center px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02] transition-all duration-200">
+                                        <button
+                                            onClick={() => setActiveSection('inbox')}
+                                            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                                                activeSection === 'inbox'
+                                                    ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                                                    : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
+                                            }`}
+                                        >
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                                             </svg>
                                             Inbox
-                                        </a>
+                                        </button>
                                     </li>
                                     <li>
-                                        <a href="#sent" className="flex items-center px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800/30 hover:text-gray-200 transition-all duration-200">
+                                        <button
+                                            onClick={() => setActiveSection('sent')}
+                                            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                                                activeSection === 'sent'
+                                                    ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                                                    : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
+                                            }`}
+                                        >
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                                             </svg>
                                             Sent
-                                        </a>
+                                        </button>
                                     </li>
                                     <li>
-                                        <a href="#drafts" className="flex items-center px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800/30 hover:text-gray-200 transition-all duration-200">
+                                        <button
+                                            onClick={() => setActiveSection('drafts')}
+                                            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                                                activeSection === 'drafts'
+                                                    ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                                                    : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
+                                            }`}
+                                        >
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                             </svg>
                                             Drafts
-                                        </a>
+                                        </button>
                                     </li>
                                     <li>
-                                        <a href="#quantum" className="flex items-center px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800/30 hover:text-gray-200 transition-all duration-200">
+                                        <button
+                                            onClick={() => setActiveSection('quantum')}
+                                            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                                                activeSection === 'quantum'
+                                                    ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                                                    : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
+                                            }`}
+                                        >
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                                             </svg>
                                             Quantum Secured
-                                        </a>
+                                        </button>
                                     </li>
                                 </ul>
                             </nav>
@@ -160,10 +209,34 @@ function Dashboard() {
                     
                     {/* Email content */}
                     <div className="md:col-span-3">
-                        <Inbox />
+                        <Inbox mode={activeSection} key={shouldRefresh} />
                     </div>
                 </div>
             </main>
+
+            {/* Compose Email Mini-Window - Position at bottom right */}
+            <div className={`fixed right-8 bottom-8 z-50 w-full max-w-md`}>
+                <ComposeEmail 
+                    isOpen={isComposing}
+                    onSend={handleSendEmail} 
+                    onCancel={() => setIsComposing(false)} 
+                />
+            </div>
+
+            {/* Floating compose button - Only show when compose is not open */}
+            {!isComposing && (
+                <button
+                    onClick={() => setIsComposing(true)}
+                    className="fixed right-8 bottom-8 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white p-4 rounded-2xl text-sm font-medium transition-all duration-200 flex items-center shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transform hover:scale-[1.02] group z-50"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-500 ease-linear">
+                        <span className="pl-2">Compose</span>
+                    </span>
+                </button>
+            )}
         </div>
     );
 }

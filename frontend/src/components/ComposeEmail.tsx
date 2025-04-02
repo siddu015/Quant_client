@@ -1,198 +1,137 @@
 // ComposeEmail.tsx
 import React, { useState } from 'react';
-import { SendEmailRequest, Email } from '../types/Email';
-import { EmailService } from '../services/EmailService';
 
 interface ComposeEmailProps {
-  onSend: (success: boolean) => void;
+  onSend: (email: { recipient: string; subject: string; body: string }) => void;
   onCancel: () => void;
+  isOpen: boolean;
 }
 
-const ComposeEmail: React.FC<ComposeEmailProps> = ({ onSend, onCancel }) => {
+const ComposeEmail: React.FC<ComposeEmailProps> = ({ onSend, onCancel, isOpen }) => {
   const [recipient, setRecipient] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [validationErrors, setValidationErrors] = useState<{
-    recipient?: string;
-    subject?: string;
-    body?: string;
-  }>({});
-
-  // Email validation regex
-  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
-  const validateForm = (): boolean => {
-    const errors: {
-      recipient?: string;
-      subject?: string;
-      body?: string;
-    } = {};
-    
-    // Validate recipient email
-    if (!recipient.trim()) {
-      errors.recipient = 'Recipient email is required';
-    } else if (!emailRegex.test(recipient.trim())) {
-      errors.recipient = 'Please enter a valid email address';
-    }
-    
-    // Validate subject
-    if (!subject.trim()) {
-      errors.subject = 'Subject is required';
-    } else if (subject.trim().length > 100) {
-      errors.subject = 'Subject must be less than 100 characters';
-    }
-    
-    // Validate body
-    if (!body.trim()) {
-      errors.body = 'Message body is required';
-    }
-    
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
+  const [isLoading, setIsLoading] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validate form
-    if (!validateForm()) {
-      return;
-    }
-    
-    // Clear previous errors
-    setError(null);
-    setIsSending(true);
-    
+    setIsLoading(true);
     try {
-      const emailRequest: SendEmailRequest = {
-        recipient_email: recipient.trim(),
-        subject: subject.trim(),
-        body: body.trim()
-      };
-      
-      const success = await EmailService.sendEmail(emailRequest);
-      
-      if (success) {
-        onSend(true);
-      } else {
-        setError('Failed to send email. Please try again.');
-        setIsSending(false);
-      }
-    } catch (err) {
-      console.error('Error sending email:', err);
-      setError('An unexpected error occurred. Please try again.');
-      setIsSending(false);
+      await onSend({ recipient, subject, body });
+      setRecipient('');
+      setSubject('');
+      setBody('');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  return (
-    <div className="bg-gray-900 rounded-lg shadow-xl p-6 w-full">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-white text-xl font-semibold">Compose Email</h2>
-        <button
-          onClick={onCancel}
-          className="text-gray-400 hover:text-white transition-colors duration-200"
-          disabled={isSending}
-          aria-label="Close compose email"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+  if (!isOpen) return null;
+
+  // Minimized view
+  if (isMinimized) {
+    return (
+      <div className="bg-gray-900/80 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-gray-800/50 h-16 w-64 flex items-center justify-between p-4 cursor-pointer" onClick={() => setIsMinimized(false)}>
+        <div className="flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-400 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
-        </button>
-      </div>
-
-      {error && (
-        <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-md mb-6 text-sm flex items-start">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-          </svg>
-          <span>{error}</span>
+          <span className="text-gray-200 text-sm">New Message</span>
         </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
-          <label htmlFor="recipient" className="block text-gray-300 text-sm font-medium mb-2">
-            To:
-          </label>
-          <input
-            type="email"
-            id="recipient"
-            value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
-            className={`w-full bg-gray-800 border ${
-              validationErrors.recipient ? 'border-red-500' : 'border-gray-700'
-            } rounded-md py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200`}
-            placeholder="recipient@example.com"
-            disabled={isSending}
-            required
-          />
-          {validationErrors.recipient && (
-            <p className="mt-1 text-sm text-red-400">{validationErrors.recipient}</p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="subject" className="block text-gray-300 text-sm font-medium mb-2">
-            Subject:
-          </label>
-          <input
-            type="text"
-            id="subject"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className={`w-full bg-gray-800 border ${
-              validationErrors.subject ? 'border-red-500' : 'border-gray-700'
-            } rounded-md py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200`}
-            placeholder="Email subject"
-            disabled={isSending}
-            required
-          />
-          {validationErrors.subject && (
-            <p className="mt-1 text-sm text-red-400">{validationErrors.subject}</p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="body" className="block text-gray-300 text-sm font-medium mb-2">
-            Message:
-          </label>
-          <textarea
-            id="body"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={10}
-            className={`w-full bg-gray-800 border ${
-              validationErrors.body ? 'border-red-500' : 'border-gray-700'
-            } rounded-md py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200`}
-            placeholder="Write your message here..."
-            disabled={isSending}
-            required
-          />
-          {validationErrors.body && (
-            <p className="mt-1 text-sm text-red-400">{validationErrors.body}</p>
-          )}
-        </div>
-
-        <div className="flex justify-end space-x-3 pt-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="bg-gray-700 hover:bg-gray-600 text-white px-5 py-2.5 rounded-md text-sm font-medium transition duration-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
-            disabled={isSending}
+        <div className="flex space-x-2">
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onCancel();
+            }}
+            className="text-gray-400 hover:text-gray-200"
           >
-            Cancel
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-gray-900/80 backdrop-blur-lg rounded-t-2xl shadow-xl overflow-hidden border border-gray-800/50">
+      {/* Header */}
+      <div className="p-3 bg-gray-800/50 border-b border-gray-800/50 flex justify-between items-center">
+        <h2 className="text-sm font-semibold text-gray-200 flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          New Message
+        </h2>
+        <div className="flex space-x-2">
+          <button
+            onClick={() => setIsMinimized(true)}
+            className="bg-gray-700/50 hover:bg-gray-600/50 text-gray-300 p-1.5 rounded-lg transition-all duration-200"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 12H6" />
+            </svg>
           </button>
           <button
-            type="submit"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-md text-sm font-medium transition duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center"
-            disabled={isSending}
+            onClick={onCancel}
+            className="bg-gray-700/50 hover:bg-gray-600/50 text-gray-300 p-1.5 rounded-lg transition-all duration-200"
           >
-            {isSending ? (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <div>
+          <input
+            type="email"
+            value={recipient}
+            onChange={(e) => setRecipient(e.target.value)}
+            required
+            className="w-full bg-gray-800/30 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
+            placeholder="To: recipient@example.com"
+          />
+        </div>
+
+        <div>
+          <input
+            type="text"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            required
+            className="w-full bg-gray-800/30 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
+            placeholder="Subject"
+          />
+        </div>
+
+        <div>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            required
+            rows={8}
+            className="w-full bg-gray-800/30 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200 resize-none"
+            placeholder="Write your message here..."
+          />
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={isLoading}
+            className={`px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-lg transition-all duration-200 flex items-center shadow-md text-sm ${
+              isLoading ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+          >
+            {isLoading ? (
               <>
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
@@ -200,7 +139,7 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({ onSend, onCancel }) => {
               </>
             ) : (
               <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
                 Send
