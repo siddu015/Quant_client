@@ -16,14 +16,26 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A';
     
-    const date = new Date(dateString);
-    return date.toLocaleString([], {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    try {
+      const date = new Date(dateString);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date:', dateString);
+        return 'Invalid date';
+      }
+      
+      return date.toLocaleString([], {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      console.error('Error formatting date:', e);
+      return 'Date error';
+    }
   };
 
   // Get first letter of email for avatar

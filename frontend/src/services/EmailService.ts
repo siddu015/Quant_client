@@ -27,6 +27,27 @@ export const GMAIL_LABELS = {
 };
 
 /**
+ * Format date to valid ISO string or return fallback
+ * @param dateStr Date string to validate and format
+ * @returns Valid ISO date string
+ */
+const formatValidDate = (dateStr: string | undefined): string => {
+  if (!dateStr) return new Date().toISOString();
+  
+  try {
+    const date = new Date(dateStr);
+    // Check if date is valid
+    if (!isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+    return new Date().toISOString();
+  } catch (e) {
+    console.warn('Invalid date format:', dateStr);
+    return new Date().toISOString();
+  }
+};
+
+/**
  * Process emails to extract label information
  * Converts Gmail API label IDs to user-friendly properties
  */
@@ -42,6 +63,9 @@ const processEmails = (emails: Email[]): Email[] => {
       console.warn('Invalid email object in processEmails', email);
       return email;
     }
+    
+    // Format dates - ensure sent_at is a valid date
+    const formattedSentAt = formatValidDate(email.sent_at);
     
     // Use existing email data, but parse label_ids to determine properties
     const labelIds = email.label_ids || [];
@@ -61,6 +85,7 @@ const processEmails = (emails: Email[]): Email[] => {
     // Enhanced email object with processed label data
     return {
       ...email,
+      sent_at: formattedSentAt,
       important,
       category: category || undefined
     };

@@ -282,7 +282,20 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
                         Date:
                       </span>
                       <p className="text-xs text-gray-500">
-                        {new Date(email.sent_at).toLocaleString()}
+                        {(() => {
+                          try {
+                            const date = new Date(email.sent_at);
+                            // Format date as "MMM DD" or "MMM DD, YYYY" if not current year
+                            const now = new Date();
+                            const isCurrentYear = date.getFullYear() === now.getFullYear();
+                            
+                            return isCurrentYear 
+                              ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                              : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                          } catch (e) {
+                            return 'Unknown date';
+                          }
+                        })()}
                       </p>
                     </div>
                   </div>
@@ -327,21 +340,12 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
                   </div>
                   
                   <div className="mt-2">
-                    <span className="text-xs text-gray-500 mb-1 inline-block">
-                      Subject:
-                    </span>
                     <h3 className={`text-base ${email.read_at ? 'text-gray-400' : 'text-gray-200'} truncate`}>
                       {email.subject}
                     </h3>
                   </div>
-                  <div className="mt-2">
-                    <span className="text-xs text-gray-500 mb-1 inline-block">
-                      Message:
-                    </span>
-                    <p className="text-sm text-gray-500 line-clamp-2">
-                      {email.body}
-                    </p>
-                  </div>
+                  
+                  {/* Message preview only shown when expanded */}
                 </div>
               </div>
             </div>
