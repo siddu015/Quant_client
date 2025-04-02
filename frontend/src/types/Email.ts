@@ -8,6 +8,7 @@ export interface Email {
   subject: string;
   body: string;
   sent_at: string;
+  sent_timestamp?: number; // Numerical timestamp for reliable sorting
   read_at: string | null;
   gmail_id?: string;
   label_ids?: string[];

@@ -31,7 +31,7 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
     }
 
     if (showLoading) {
-    setIsLoading(true);
+      setIsLoading(true);
     }
     setError(null);
     
@@ -40,9 +40,10 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
       if (cachedEmails && !forceRefresh) {
         console.log('Using cached emails');
         if (mode === 'sent') {
-          setEmails(cachedEmails.sent);
+          // Use spread to create a new array reference and ensure we don't modify cache
+          setEmails([...cachedEmails.sent]);
         } else if (mode === 'inbox') {
-          setEmails(cachedEmails.received);
+          setEmails([...cachedEmails.received]);
         } else {
           setEmails([]);
         }
@@ -55,14 +56,14 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
       console.log('Fetching emails for user:', userEmail);
       const result = await EmailService.getEmails();
       
-      // Cache the results
+      // Cache the results - these should already be sorted by date
       setCachedEmails(result);
       
       // Set emails based on mode
       if (mode === 'sent') {
-        setEmails(result.sent);
+        setEmails([...result.sent]); // Use spread to create a new array reference
       } else if (mode === 'inbox') {
-        setEmails(result.received);
+        setEmails([...result.received]);
       } else {
         setEmails([]);
       }
@@ -89,10 +90,11 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
   useEffect(() => {
     if (cachedEmails) {
       console.log('Updating displayed emails from cache for mode:', mode);
+      // Always ensure emails are consistently sorted by date
       if (mode === 'sent') {
-        setEmails(cachedEmails.sent);
+        setEmails([...cachedEmails.sent]); // Use spread to ensure we're not modifying the cached array
       } else if (mode === 'inbox') {
-        setEmails(cachedEmails.received);
+        setEmails([...cachedEmails.received]);
       } else {
         setEmails([]);
       }
@@ -132,6 +134,7 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
               e.id === email.id ? { ...e, read_at: new Date().toISOString() } : e
             );
             
+            // Important: Don't change the order when updating the cache
             setCachedEmails({
               ...cachedEmails,
               received: updatedReceived

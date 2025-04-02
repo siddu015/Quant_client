@@ -75,6 +75,20 @@ const processEmails = (emails: Email[]): Email[] => {
     // Format dates - ensure sent_at is a valid date
     const formattedSentAt = formatValidDate(email.sent_at);
     
+    // Parse sent_at as a timestamp for consistent sorting
+    let sentTimestamp = 0;
+    try {
+      sentTimestamp = new Date(formattedSentAt).getTime();
+      // If date parsing fails, use a fallback timestamp
+      if (isNaN(sentTimestamp)) {
+        console.warn(`Invalid sent_at timestamp for email ${email.id}: ${formattedSentAt}`);
+        sentTimestamp = 0;
+      }
+    } catch (e) {
+      console.error('Error parsing sent date:', e);
+      sentTimestamp = 0;
+    }
+    
     // Use existing email data, but parse label_ids to determine properties
     const labelIds = email.label_ids || [];
     
@@ -110,10 +124,41 @@ const processEmails = (emails: Email[]): Email[] => {
     return {
       ...email,
       sent_at: formattedSentAt,
+      sent_timestamp: sentTimestamp, // Add timestamp for reliable sorting
       read_at: updatedReadAt,
       important,
       category: category || undefined
     };
+  });
+};
+
+// Helper function to sort emails by date
+const sortEmailsByDate = (emails: Email[]): Email[] => {
+  return [...emails].sort((a, b) => {
+    // Use sent_timestamp if available (most reliable)
+    if (a.sent_timestamp && b.sent_timestamp) {
+      return b.sent_timestamp - a.sent_timestamp;
+    }
+    
+    // Fallback to comparing date strings
+    try {
+      const dateA = new Date(a.sent_at);
+      const dateB = new Date(b.sent_at);
+      
+      // If both dates are valid, compare them
+      if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+        return dateB.getTime() - dateA.getTime();
+      }
+      
+      // If one date is invalid, prioritize the valid one
+      if (!isNaN(dateA.getTime())) return -1;
+      if (!isNaN(dateB.getTime())) return 1;
+    } catch (e) {
+      console.error('Error comparing dates:', e);
+    }
+    
+    // Last resort: string comparison
+    return b.sent_at.localeCompare(a.sent_at);
   });
 };
 
@@ -167,16 +212,18 @@ export const EmailService = {
         // Process and categorize emails
         const processedEmails = processEmails(data.emails);
         
-        const sent = processedEmails.filter((email: Email) => 
+        // Filter sent and received emails
+        let sent = processedEmails.filter((email: Email) => 
           email.sender_email === userEmail
         );
-        const received = processedEmails.filter((email: Email) => 
+        
+        let received = processedEmails.filter((email: Email) => 
           email.recipient_email === userEmail
         );
         
-        // Sort emails by date, newest first
-        sent.sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
-        received.sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+        // Sort both arrays by date (newest first)
+        sent = sortEmailsByDate(sent);
+        received = sortEmailsByDate(received);
         
         console.log(`Categorized ${sent.length} sent and ${received.length} received emails`);
         return { sent, received };
@@ -186,12 +233,13 @@ export const EmailService = {
       if (Array.isArray(data.sent) && Array.isArray(data.received)) {
         console.log('Using legacy email format');
         
-        // Process and sort both arrays
-        const sent = processEmails(data.sent)
-          .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+        // Process emails
+        const processedSent = processEmails(data.sent);
+        const processedReceived = processEmails(data.received);
         
-        const received = processEmails(data.received)
-          .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+        // Sort by date (newest first)
+        const sent = sortEmailsByDate(processedSent);
+        const received = sortEmailsByDate(processedReceived);
         
         return { sent, received };
       }
