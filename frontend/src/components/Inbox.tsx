@@ -128,18 +128,23 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
         const sortedSent = [...result.sent].sort((a, b) => {
           const timestampA = a.sent_timestamp || new Date(a.sent_at).getTime() || 0;
           const timestampB = b.sent_timestamp || new Date(b.sent_at).getTime() || 0;
-          return timestampB - timestampA;
+          
+          // Oldest first
+          return timestampA - timestampB;
         });
         
+        // Newest first - reverse the array
+        const reversedSent = sortedSent.reverse();
+        
         // Check if sorting made any changes and log
-        const wasSorted = JSON.stringify(sortedSent.map(e => e.id)) === 
-                         JSON.stringify(result.sent.map(e => e.id));
+        const wasSorted = JSON.stringify(reversedSent.map(e => e.id)) === 
+                        JSON.stringify(result.sent.map(e => e.id));
         
         if (!wasSorted) {
           console.warn('Final sorting changed the order of sent emails in Inbox component');
         }
         
-        setEmails(sortedSent);
+        setEmails(reversedSent);
       } else if (mode === 'inbox') {
         setEmails([...result.received]);
       } else {
@@ -197,25 +202,29 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
           }
         });
         
-        // Sort by timestamp with improved logging
+        // Sort by timestamp - older first to reverse the current order
         const sortedSent = emailsWithParsedDates.sort((a, b) => {
           const timestampA = a.sent_timestamp || 0;
           const timestampB = b.sent_timestamp || 0;
           
           // Log comparison for debugging
-          console.log(`Comparing: ${a.subject} (${timestampA}) vs ${b.subject} (${timestampB}) = ${timestampB - timestampA}`);
+          console.log(`Comparing: ${a.subject} (${timestampA}) vs ${b.subject} (${timestampB}) = ${timestampA - timestampB}`);
           
-          return timestampB - timestampA;
+          // This will put older emails first (opposite of what we had before)
+          return timestampA - timestampB;
         });
         
+        // Now reverse the array to get newest on top
+        const reversedSent = sortedSent.reverse();
+        
         // Log the final sorted order
-        console.log('FINAL SORTED ORDER:');
-        sortedSent.forEach((email, index) => {
+        console.log('FINAL SORTED ORDER (REVERSED):');
+        reversedSent.forEach((email, index) => {
           const date = new Date(email.sent_at);
           console.log(`${index}: ${email.subject} - ${date.toLocaleString()} (${email.sent_timestamp})`);
         });
         
-        setEmails(sortedSent);
+        setEmails(reversedSent);
       } else if (mode === 'inbox') {
         setEmails([...cachedEmails.received]);
       } else {
@@ -265,21 +274,24 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
             }
             return email;
           })
-          // Sort by timestamp, newest first
+          // Sort by timestamp, oldest first
           .sort((a, b) => {
             const timestampA = a.sent_timestamp || 0;
             const timestampB = b.sent_timestamp || 0;
-            return timestampB - timestampA;
+            return timestampA - timestampB;
           });
+          
+        // Reverse to get newest first  
+        const reversedSorted = verifiedSorted.reverse();
         
         // Log the sorted order for debugging
-        console.log('AFTER REFRESH - SENT EMAIL ORDER:');
-        verifiedSorted.forEach((email, i) => {
+        console.log('AFTER REFRESH - SENT EMAIL ORDER (REVERSED):');
+        reversedSorted.forEach((email, i) => {
           console.log(`${i}: ${email.subject} - ${new Date(email.sent_at).toLocaleString()} (${email.sent_timestamp})`);
         });
         
         // Update emails with the guaranteed sorted version
-        setEmails(verifiedSorted);
+        setEmails(reversedSorted);
       }
       
       console.log('Email refresh completed successfully');

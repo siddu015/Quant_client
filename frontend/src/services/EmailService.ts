@@ -75,28 +75,18 @@ const processEmails = (emails: Email[]): Email[] => {
     // Format dates - ensure sent_at is a valid date
     const formattedSentAt = formatValidDate(email.sent_at);
     
-    // Calculate a reliable timestamp from the formatted date
-    // This will be used for consistent sorting
+    // Parse sent_at as a timestamp for consistent sorting
     let sentTimestamp = 0;
-    
     try {
-      // Get a proper date object
-      const sentDate = new Date(formattedSentAt);
-      
-      // Ensure we have a valid date before getting the timestamp
-      if (!isNaN(sentDate.getTime())) {
-        sentTimestamp = sentDate.getTime();
-        
-        // For debugging: Show what timestamp was generated
-        console.log(`Generated timestamp for "${email.subject}": ${sentTimestamp} (${sentDate.toLocaleString()})`);
-      } else {
-        // If we couldn't parse a proper date, use current time minus offset
-        console.warn(`Invalid sent_at format for email ${email.id} (${email.subject}): "${formattedSentAt}"`);
-        sentTimestamp = Date.now() - 1000000; 
+      sentTimestamp = new Date(formattedSentAt).getTime();
+      // If date parsing fails, use a fallback timestamp
+      if (isNaN(sentTimestamp)) {
+        console.warn(`Invalid sent_at timestamp for email ${email.id}: ${formattedSentAt}`);
+        sentTimestamp = 0;
       }
     } catch (e) {
-      console.error(`Error creating timestamp for email ${email.id}:`, e);
-      sentTimestamp = Date.now() - 1000000;
+      console.error('Error parsing sent date:', e);
+      sentTimestamp = 0;
     }
     
     // Use existing email data, but parse label_ids to determine properties
@@ -131,83 +121,49 @@ const processEmails = (emails: Email[]): Email[] => {
     else if (labelIds.includes(GMAIL_LABELS.CATEGORY_PROMOTIONS)) category = 'Promotions';
     
     // Enhanced email object with processed label data
-    const processedEmail = {
+    return {
       ...email,
       sent_at: formattedSentAt,
-      sent_timestamp: sentTimestamp,
+      sent_timestamp: sentTimestamp, // Add timestamp for reliable sorting
       read_at: updatedReadAt,
       important,
       category: category || undefined
     };
-    
-    // Special logging for sent emails to ensure correct sorting
-    if (labelIds.includes(GMAIL_LABELS.SENT)) {
-      console.log(`PROCESSED SENT EMAIL: "${processedEmail.subject}"`, {
-        id: processedEmail.id,
-        original_date: email.sent_at,
-        formatted_date: formattedSentAt,
-        timestamp: sentTimestamp,
-        date_obj: new Date(formattedSentAt).toLocaleString()
-      });
-    }
-    
-    return processedEmail;
   });
 };
 
-// Enhanced helper function to sort emails by date with debugging
+// Helper function to sort emails by date
 const sortEmailsByDate = (emails: Email[]): Email[] => {
   if (!emails || !Array.isArray(emails)) {
     return [];
   }
 
-  console.log('Before sorting, first 3 emails:', 
-    emails.slice(0, 3).map(e => ({
-      id: e.id, 
-      subject: e.subject,
-      sent_at: e.sent_at,
-      sent_timestamp: e.sent_timestamp
-    }))
-  );
-
-  // First ensure all emails have valid timestamps
-  const emailsWithValidTimestamps = emails.map(email => {
-    if (!email.sent_timestamp || isNaN(email.sent_timestamp)) {
-      const timestamp = new Date(email.sent_at).getTime();
-      return {
-        ...email,
-        sent_timestamp: isNaN(timestamp) ? Date.now() - 1000000 : timestamp
-      };
+  return [...emails].sort((a, b) => {
+    // Use sent_timestamp if available (most reliable)
+    if (a.sent_timestamp && b.sent_timestamp) {
+      return b.sent_timestamp - a.sent_timestamp;
     }
-    return email;
-  });
-
-  // Sort by timestamp - newest first
-  const sorted = [...emailsWithValidTimestamps].sort((a, b) => {
-    const timestampA = a.sent_timestamp || 0;
-    const timestampB = b.sent_timestamp || 0;
-    return timestampB - timestampA;
-  });
-
-  console.log('After sorting, first 3 emails:', 
-    sorted.slice(0, 3).map(e => ({
-      id: e.id, 
-      subject: e.subject,
-      sent_at: e.sent_at,
-      sent_timestamp: e.sent_timestamp
-    }))
-  );
-
-  // Double-check sorting
-  for (let i = 1; i < Math.min(sorted.length, 10); i++) {
-    const prevTimestamp = sorted[i-1].sent_timestamp || 0;
-    const currTimestamp = sorted[i].sent_timestamp || 0;
-    if (currTimestamp > prevTimestamp) {
-      console.error(`SORTING ERROR: Email at index ${i} (${sorted[i].subject}) has timestamp ${currTimestamp}, which is newer than previous email (${sorted[i-1].subject}) with timestamp ${prevTimestamp}`);
+    
+    // Fallback to comparing date strings
+    try {
+      const dateA = new Date(a.sent_at);
+      const dateB = new Date(b.sent_at);
+      
+      // If both dates are valid, compare them
+      if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+        return dateB.getTime() - dateA.getTime();
+      }
+      
+      // If one date is invalid, prioritize the valid one
+      if (!isNaN(dateA.getTime())) return -1;
+      if (!isNaN(dateB.getTime())) return 1;
+    } catch (e) {
+      console.error('Error comparing dates:', e);
     }
-  }
-
-  return sorted;
+    
+    // Last resort: string comparison
+    return b.sent_at.localeCompare(a.sent_at);
+  });
 };
 
 // Helper to log email diagnostics for debugging
@@ -278,15 +234,8 @@ export const EmailService = {
           email.sender_email === userEmail
         );
         
-        // Log sent email timestamps BEFORE any sorting
-        if (sent.length > 0) {
-          console.log('RAW SENT EMAILS BEFORE SORTING:');
-          sent.forEach(email => {
-            console.log(`Email "${email.subject}": ${email.sent_at} (timestamp: ${email.sent_timestamp})`);
-          });
-        }
-        
         // Deduplicate sent emails using a Map with gmail_id or id as key
+        // This prevents the same email from appearing multiple times
         const uniqueSentMap = new Map<string, Email>();
         sent.forEach(email => {
           const key = email.gmail_id || email.id;
@@ -300,40 +249,26 @@ export const EmailService = {
         // Convert the Map back to an array
         sent = Array.from(uniqueSentMap.values());
         
-        // SIMPLIFIED SORTING: Use a single, reliable sort by timestamp only
-        console.log('SORTING SENT EMAILS BY TIMESTAMP...');
-        sent.sort((a, b) => {
-          // For debugging, log each comparison
-          const timestampA = a.sent_timestamp || 0;
-          const timestampB = b.sent_timestamp || 0;
-          console.log(`Comparing "${a.subject}" (${timestampA}) vs "${b.subject}" (${timestampB})`);
-          return timestampB - timestampA; // Newest first
-        });
-        
-        // Log the final sorted order
-        if (sent.length > 0) {
-          console.log('FINAL SENT EMAIL ORDER:');
-          sent.forEach((email, index) => {
-            const date = new Date(email.sent_at);
-            console.log(`${index}: "${email.subject}" - ${date.toLocaleString()} (${email.sent_timestamp})`);
-          });
-        }
-        
-        // Step 2: Filter received emails similarly
+        // Step 2: A message is "received" if the recipient is the current user 
+        // AND it wasn't sent by the current user (to prevent duplicates)
         const received = processedEmails.filter((email: Email) => 
           email.recipient_email === userEmail && 
           email.sender_email !== userEmail
         );
         
-        // Sort received emails the same way
-        received.sort((a, b) => (b.sent_timestamp || 0) - (a.sent_timestamp || 0));
+        // Log the number of emails being removed as duplicates
+        console.log(`Removed ${processedEmails.filter(e => e.sender_email === userEmail).length - sent.length} duplicate sent emails`);
+        
+        // Step 3: Sort both arrays by date (newest first)
+        const sortedSent = sortEmailsByDate(sent);
+        const sortedReceived = sortEmailsByDate(received);
         
         // Log diagnostic information
-        logEmailCounts(sent, received);
+        logEmailCounts(sortedSent, sortedReceived);
         
         return { 
-          sent: sent, 
-          received: received 
+          sent: sortedSent, 
+          received: sortedReceived 
         };
       }
       
@@ -352,18 +287,6 @@ export const EmailService = {
         // Process emails
         let processedSent = processEmails(data.sent);
         let processedReceived = processEmails(data.received);
-        
-        // Verify the sent emails have sent_timestamp
-        processedSent = processedSent.map(email => {
-          if (!email.sent_timestamp || email.sent_timestamp === 0) {
-            console.warn(`Sent email ${email.id} has no valid timestamp, fixing:`, email.sent_at);
-            return {
-              ...email,
-              sent_timestamp: new Date(email.sent_at).getTime() || Date.now() - 10000
-            };
-          }
-          return email;
-        });
         
         // Deduplicate sent emails
         const uniqueSentMap = new Map<string, Email>();
@@ -392,32 +315,6 @@ export const EmailService = {
         
         // Sort by date (newest first)
         const sortedSent = sortEmailsByDate(processedSent);
-        
-        // Verify sorting worked correctly
-        if (sortedSent.length > 1) {
-          console.log('Verifying sent email sort order (legacy format):');
-          for (let i = 0; i < Math.min(sortedSent.length, 5); i++) {
-            console.log(`  ${i}: ${sortedSent[i].subject} - ${sortedSent[i].sent_at} (${sortedSent[i].sent_timestamp})`);
-          }
-          
-          // Check if sorting is correct (newer emails should come first)
-          let sortingIssue = false;
-          for (let i = 1; i < sortedSent.length; i++) {
-            const current = sortedSent[i].sent_timestamp || 0;
-            const prev = sortedSent[i-1].sent_timestamp || 0;
-            if (current > prev) {
-              console.error(`Sorting issue detected at index ${i}: ${sortedSent[i].subject} (${current}) is newer than ${sortedSent[i-1].subject} (${prev})`);
-              sortingIssue = true;
-            }
-          }
-          
-          if (sortingIssue) {
-            console.warn('Re-sorting sent emails using timestamp only...');
-            // Force sorting using only timestamp, most recent first
-            sortedSent.sort((a, b) => (b.sent_timestamp || 0) - (a.sent_timestamp || 0));
-          }
-        }
-        
         const sortedReceived = sortEmailsByDate(processedReceived);
         
         // Log diagnostic information
