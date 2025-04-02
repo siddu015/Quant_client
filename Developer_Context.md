@@ -32,3 +32,14 @@ Phase 3: Using Cache
 - Created a new `cache` module with a `RedisCache` struct
 - Implemented methods for caching and retrieving emails and message IDs
 - Added proper error handling and fallback for when Redis is unavailable
+- Email messages are cached for an hour
+- Message IDs are cached for 10 minutes
+- Cache is automatically invalidated when sending new emails
+- Background refresh tasks update the cache asynchronously
+
+Phase 4:
+
+- Add support for Gmail labels and folders
+- Implement search functionality across emails
+- Create filters and sorting options
+- Implement email threading for conversations

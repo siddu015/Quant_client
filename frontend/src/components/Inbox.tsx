@@ -5,6 +5,7 @@ import { EmailService } from '../services/EmailService';
 import EmailListItem from './EmailListItem';
 import EmailDetail from './EmailDetail';
 import ComposeEmail from './ComposeEmail';
+import { useAuth } from '../AuthContext';
 
 const Inbox: React.FC = () => {
   // State management
@@ -17,90 +18,93 @@ const Inbox: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
-  
+
+  // Get auth context
+  const { isAuthenticated, userEmail } = useAuth();
+
   // Reference to store interval ID
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Memoized fetch function to avoid recreation on each render
   const fetchEmails = useCallback(async (showLoading = true) => {
+    if (!isAuthenticated || !userEmail) {
+      console.log('Not fetching emails - user not authenticated or email not available');
+      return;
+    }
+
     if (showLoading) {
       setIsLoading(true);
     }
     setError(null);
-    
+
     try {
-      const { sent, received } = await EmailService.getEmails();
-      setSentEmails(sent);
-      setReceivedEmails(received);
+      console.log('Fetching emails for user:', userEmail);
+      const result = await EmailService.getEmails();
+      
+      console.log(`Received ${result.sent.length} sent and ${result.received.length} received emails`);
+      setSentEmails(result.sent);
+      setReceivedEmails(result.received);
     } catch (err) {
+      console.error('Error in fetchEmails:', err);
       setError('Failed to load emails. Please try again later.');
-      console.error('Error fetching emails:', err);
+      setSentEmails([]);
+      setReceivedEmails([]);
     } finally {
       if (showLoading) {
         setIsLoading(false);
       }
     }
-  }, []);
+  }, [isAuthenticated, userEmail]);
 
   // Background refresh function
   const backgroundRefresh = useCallback(async () => {
-    if (!isBackgroundRefreshing) {
-      setIsBackgroundRefreshing(true);
-      try {
-        console.log('Performing background refresh of emails...');
-        const { sent, received } = await EmailService.getEmails();
-        
-        // Check if we have new emails by comparing counts
-        const hasNewReceivedEmails = received.length > receivedEmails.length;
-        const hasNewSentEmails = sent.length > sentEmails.length;
-        
-        // Only update state if we have new emails
-        if (hasNewReceivedEmails || hasNewSentEmails) {
-          console.log('New emails detected, updating view');
-          setSentEmails(sent);
-          setReceivedEmails(received);
-        }
-      } catch (err) {
-        console.error('Background refresh error:', err);
-        // Don't show error to user during background refresh
-      } finally {
-        setIsBackgroundRefreshing(false);
-      }
+    if (!isAuthenticated || !userEmail || isBackgroundRefreshing) {
+      return;
     }
-  }, [isBackgroundRefreshing, receivedEmails.length, sentEmails.length]);
+
+    setIsBackgroundRefreshing(true);
+    try {
+      console.log('Performing background refresh...');
+      const result = await EmailService.getEmails();
+      setSentEmails(result.sent);
+      setReceivedEmails(result.received);
+    } catch (err) {
+      console.error('Background refresh error:', err);
+    } finally {
+      setIsBackgroundRefreshing(false);
+    }
+  }, [isAuthenticated, userEmail, isBackgroundRefreshing]);
 
   // Setup periodic refresh when component mounts
   useEffect(() => {
-    // Initial fetch
-    fetchEmails();
-    
-    // Set up interval for background refresh (every 30 seconds)
-    refreshIntervalRef.current = setInterval(() => {
-      backgroundRefresh();
-    }, 30000);
-    
-    // Clean up interval on unmount
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
-  }, [fetchEmails, backgroundRefresh]);
+    if (isAuthenticated && userEmail) {
+      console.log('Setting up email fetching for user:', userEmail);
+      fetchEmails();
+
+      // Set up interval for background refresh (every 30 seconds)
+      refreshIntervalRef.current = setInterval(backgroundRefresh, 30000);
+
+      // Clean up interval on unmount
+      return () => {
+        if (refreshIntervalRef.current) {
+          clearInterval(refreshIntervalRef.current);
+        }
+      };
+    }
+  }, [isAuthenticated, userEmail, fetchEmails, backgroundRefresh]);
 
   // Refresh emails when refreshTrigger changes
   useEffect(() => {
-    if (refreshTrigger > 0) {
+    if (refreshTrigger > 0 && isAuthenticated && userEmail) {
       fetchEmails();
     }
-  }, [refreshTrigger, fetchEmails]);
+  }, [refreshTrigger, fetchEmails, isAuthenticated, userEmail]);
 
   const handleSelectEmail = async (email: Email) => {
     setSelectedEmail(email);
-    
+
     // If it's a received email and not read yet, mark it as read
-    if (email.recipient_email && !email.read_at) {
-      // In a real app, we would call an API to mark as read
-      // For now, we'll just refresh the emails list
+    if (email.recipient_email === userEmail && !email.read_at) {
       await fetchEmails();
     }
   };
@@ -113,7 +117,6 @@ const Inbox: React.FC = () => {
   const handleSendEmail = async (success: boolean) => {
     setIsComposing(false);
     if (success) {
-      // Trigger a refresh by incrementing the refreshTrigger
       setRefreshTrigger(prev => prev + 1);
     }
   };
@@ -125,6 +128,12 @@ const Inbox: React.FC = () => {
 
   const handleRefresh = () => {
     setRefreshTrigger(prev => prev + 1);
+  };
+
+  const handleRetry = () => {
+    console.log('Retrying email fetch...');
+    setError(null);
+    fetchEmails(true);
   };
 
   // Render loading state
@@ -144,12 +153,11 @@ const Inbox: React.FC = () => {
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
           </svg>
-          <div>
-            <strong className="font-bold">Error!</strong>
-            <span className="block sm:inline ml-1">{error}</span>
-            <button 
-              onClick={handleRefresh}
-              className="mt-2 bg-red-800 hover:bg-red-700 text-white text-xs px-3 py-1 rounded transition-colors duration-200"
+          <div className="flex-grow">
+            <p className="font-medium">{error}</p>
+            <button
+              onClick={handleRetry}
+              className="mt-2 bg-red-800 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm transition-colors duration-200"
             >
               Try Again
             </button>
@@ -174,6 +182,55 @@ const Inbox: React.FC = () => {
   // Render inbox
   return (
     <div className="bg-gray-900 rounded-lg shadow-xl overflow-hidden">
+      {/* Debug panel */}
+      <div className="p-4 bg-gray-800 border-b border-gray-700">
+        <details className="text-xs text-gray-400">
+          <summary className="cursor-pointer">Debug Panel</summary>
+          <div className="mt-2 p-2 bg-gray-900 rounded">
+            <p>Current user email: {userEmail || 'Not set'}</p>
+            <div className="flex mt-2">
+              <input
+                type="text"
+                className="flex-1 p-1 text-black rounded-l"
+                placeholder="Enter email for testing"
+                defaultValue={userEmail || ''}
+                id="debug-email-input"
+              />
+              <button
+                className="bg-blue-600 px-2 py-1 rounded-r text-white"
+                onClick={() => {
+                  const input = document.getElementById('debug-email-input') as HTMLInputElement;
+                  if (input && input.value) {
+                    localStorage.setItem('userEmail', input.value);
+                    console.log('Manually set user email to:', input.value);
+                    fetchEmails(true);
+                  }
+                }}
+              >
+                Set
+              </button>
+            </div>
+            <div className="mt-2">
+              <button
+                className="bg-red-600 px-2 py-1 rounded text-white mr-2"
+                onClick={() => {
+                  localStorage.removeItem('userEmail');
+                  console.log('Cleared user email');
+                }}
+              >
+                Clear Email
+              </button>
+              <button
+                className="bg-green-600 px-2 py-1 rounded text-white"
+                onClick={() => fetchEmails(true)}
+              >
+                Refresh Emails
+              </button>
+            </div>
+          </div>
+        </details>
+      </div>
+
       <div className="p-4 bg-gray-800/50 border-b border-gray-700 flex justify-between items-center">
         <h2 className="text-white text-xl font-semibold flex items-center">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -207,11 +264,10 @@ const Inbox: React.FC = () => {
       <div className="bg-gray-800/30">
         <div className="flex">
           <button
-            className={`py-3 px-6 text-sm font-medium flex items-center relative ${
-              activeTab === 'inbox'
+            className={`py-3 px-6 text-sm font-medium flex items-center relative ${activeTab === 'inbox'
                 ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-900/10'
                 : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
-            } transition-colors duration-200`}
+              } transition-colors duration-200`}
             onClick={() => setActiveTab('inbox')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -225,11 +281,10 @@ const Inbox: React.FC = () => {
             )}
           </button>
           <button
-            className={`py-3 px-6 text-sm font-medium flex items-center ${
-              activeTab === 'sent'
+            className={`py-3 px-6 text-sm font-medium flex items-center ${activeTab === 'sent'
                 ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-900/10'
                 : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
-            } transition-colors duration-200`}
+              } transition-colors duration-200`}
             onClick={() => setActiveTab('sent')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -253,58 +308,36 @@ const Inbox: React.FC = () => {
               <EmailListItem
                 key={email.id}
                 email={email}
-                isReceived={true}
-                onClick={() => handleSelectEmail(email)}
+                onSelect={handleSelectEmail}
               />
             ))
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-              <div className="w-20 h-20 rounded-full bg-gray-800 flex items-center justify-center mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <p className="text-gray-300 text-lg mb-2">Your inbox is empty</p>
-              <p className="text-gray-500 text-sm max-w-md">When you receive emails, they will appear here.</p>
-              <button
-                onClick={handleRefresh}
-                className="mt-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Check Again
-              </button>
+            <div className="p-8 text-center text-gray-500">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <p className="text-lg font-medium">No emails in your inbox</p>
+              <p className="mt-1">Your inbox is empty. New messages will appear here.</p>
             </div>
           )
-        ) : sentEmails.length > 0 ? (
-          sentEmails.map((email) => (
-            <EmailListItem
-              key={email.id}
-              email={email}
-              isReceived={false}
-              onClick={() => handleSelectEmail(email)}
-            />
-          ))
         ) : (
-          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-            <div className="w-20 h-20 rounded-full bg-gray-800 flex items-center justify-center mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+          sentEmails.length > 0 ? (
+            sentEmails.map((email) => (
+              <EmailListItem
+                key={email.id}
+                email={email}
+                onSelect={handleSelectEmail}
+              />
+            ))
+          ) : (
+            <div className="p-8 text-center text-gray-500">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
+              <p className="text-lg font-medium">No sent emails</p>
+              <p className="mt-1">Emails you send will appear here. Try composing a new message.</p>
             </div>
-            <p className="text-gray-300 text-lg mb-2">No sent emails</p>
-            <p className="text-gray-500 text-sm max-w-md">When you send emails, they will appear here.</p>
-            <button
-              onClick={handleComposeClick}
-              className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 flex items-center"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Compose Email
-            </button>
-          </div>
+          )
         )}
       </div>
     </div>

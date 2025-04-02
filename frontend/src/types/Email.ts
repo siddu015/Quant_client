@@ -10,6 +10,7 @@ export interface Email {
   sent_at: string;
   read_at: string | null;
   gmail_id?: string;
+  label_ids?: string[];
 }
 
 export interface SendEmailRequest {

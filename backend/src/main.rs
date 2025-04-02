@@ -4,6 +4,11 @@ use actix_cors::Cors;
 use std::env;
 use dotenv::dotenv;
 use sqlx::postgres::PgPoolOptions;
+use env_logger::Builder;
+use log::LevelFilter;
+use std::fs::File;
+use env_logger::fmt::Color;
+use std::io::Write;
 
 // Import modules
 mod models;
@@ -18,7 +23,11 @@ mod cache;
 async fn main() -> std::io::Result<()> {
     // Load environment variables
     dotenv().ok();
-    env_logger::init();
+    
+    // Configure logging
+    Builder::new()
+        .filter_level(LevelFilter::Debug)
+        .init();
     
     // Database setup
     let database_url = env::var("DATABASE_URL")
@@ -42,8 +51,8 @@ async fn main() -> std::io::Result<()> {
     let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let bind_address = format!("0.0.0.0:{}", port);
     
-    println!("Server starting on {}", bind_address);
-    println!("Frontend URL: {}", auth::FRONTEND_URL);
+    log::info!("Server starting on {}", bind_address);
+    log::info!("Frontend URL: {}", auth::FRONTEND_URL);
 
     // Start HTTP server
     HttpServer::new(move || {
@@ -73,6 +82,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/emails/refresh", web::post().to(handlers::refresh_emails))
             // Admin routes
             .route("/admin/users", web::get().to(handlers::list_users))
+            // Label routes
+            .route("/api/labels", web::get().to(handlers::get_labels))
     })
         .bind(&bind_address)?
         .run()

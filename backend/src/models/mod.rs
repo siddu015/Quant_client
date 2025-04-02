@@ -2,8 +2,10 @@
 mod auth;
 mod response;
 mod email;
+mod label;
 
 // Re-export public items
 pub use auth::{AuthQuery, GoogleUserInfo};
 pub use response::UserResponse;
-pub use email::{Email, SendEmailRequest};
+pub use email::{Email, SendEmailRequest, EmailPreview, EmailFilter, SortField, SortOrder};
+pub use label::{GmailLabel, LabelColor};

@@ -6,8 +6,9 @@ use std::env;
 
 use crate::db;
 use crate::models::SendEmailRequest;
-use crate::gmail::{GmailClient, parse_gmail_message};
+use crate::gmail::{GmailClient, parse_gmail_message, GmailMessage};
 use crate::cache::RedisCache;
+use crate::models::SortField;
 
 type DbPool = web::Data<sqlx::PgPool>;
 type GmailClientData = web::Data<std::sync::Arc<GmailClient>>;
@@ -153,6 +154,7 @@ pub async fn send_email(
 // Get all emails for the current user (both sent and received)
 pub async fn get_emails(
     req: HttpRequest,
+    query: web::Query<crate::models::EmailFilter>,
     db_pool: DbPool,
     gmail_client: GmailClientData,
     redis_cache: RedisCacheData,
@@ -164,131 +166,113 @@ pub async fn get_emails(
         // Look up user by session token
         match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
             Ok(Some((email, _, _, refresh_token))) => {
-                println!("Getting emails for authenticated user: {}", email);
+                println!("Getting emails for authenticated user: {} with filters: {:?}", email, query);
                 
                 // First try to get emails from Redis cache
                 let mut use_cache = true;
                 
-                // Check cache for received emails
+                // Create a cache key that includes the filters
+                let cache_key = format!("{}:{}:{}:{}:{}:{}",
+                    query.label.as_deref().unwrap_or(""),
+                    query.is_read.unwrap_or(false),
+                    query.search.as_deref().unwrap_or(""),
+                    query.sender.as_deref().unwrap_or(""),
+                    query.recipient.as_deref().unwrap_or(""),
+                    match &query.sort_by {
+                        Some(sort) => match sort {
+                            SortField::Date => "date",
+                            SortField::Sender => "sender",
+                            SortField::Subject => "subject",
+                        },
+                        None => ""
+                    }
+                );
+                
+                // Check cache for filtered results first
+                if let Ok(Some(cached_filtered)) = redis_cache.get_cached_emails(&email, &cache_key).await {
+                    println!("Using cached filtered emails: {} emails", cached_filtered.len());
+                    return HttpResponse::Ok().json(json!({
+                        "success": true,
+                        "emails": cached_filtered
+                    }));
+                }
+                
+                // If we don't have cached filtered results, get base emails from cache
                 let cached_received = match redis_cache.get_cached_emails(&email, "received").await {
                     Ok(Some(emails)) => emails,
                     _ => {
-                        // No cached received emails
                         use_cache = false;
                         Vec::new()
                     }
                 };
                 
-                // Check cache for sent emails
                 let cached_sent = match redis_cache.get_cached_emails(&email, "sent").await {
                     Ok(Some(emails)) => emails,
                     _ => {
-                        // No cached sent emails
                         use_cache = false;
                         Vec::new()
                     }
                 };
                 
                 if use_cache {
-                    println!("Using cached emails: {} sent, {} received", cached_sent.len(), cached_received.len());
+                    println!("Using cached base emails: {} sent, {} received", cached_sent.len(), cached_received.len());
                     
-                    // Even though we're returning cached data, start a background refresh task
-                    // to update the cache for next request if there's a refresh token
+                    // Combine and apply filters
+                    let mut all_emails = [cached_sent, cached_received].concat();
+                    all_emails = apply_filters_to_emails(all_emails, &query);
+                    
+                    // Cache the filtered results
+                    if !all_emails.is_empty() {
+                        let _ = redis_cache.cache_emails(&email, &cache_key, &all_emails).await;
+                        println!("Cached filtered results with key: {}", cache_key);
+                    }
+                    
+                    // Start background refresh
                     if let Some(refresh_token) = refresh_token.clone() {
-                        // Clone what we need for the async task
                         let email_clone = email.clone();
                         let gmail_client_clone = gmail_client.clone();
                         let redis_cache_clone = redis_cache.clone();
                         
-                        // Spawn a background task to refresh the cache
                         tokio::spawn(async move {
-                            println!("Background refresh started for user {}", email_clone);
-                            
-                            // Check if new emails are available
+                            println!("Starting background refresh for {}", email_clone);
                             if let Ok(token) = gmail_client_clone.get_token(&email_clone, &refresh_token).await {
-                                // Get received messages from Gmail API
+                                // Refresh inbox messages
                                 if let Ok(messages) = gmail_client_clone.get_messages(&email_clone, &token, Some("in:inbox")).await {
-                                    println!("Retrieved {} inbox messages in background refresh", messages.len());
-                                    
-                                    // Process received messages
                                     let mut received_emails = Vec::new();
                                     let limit = std::cmp::min(20, messages.len());
                                     
                                     for msg_id in &messages[0..limit] {
                                         if let Ok(message) = gmail_client_clone.get_message_detail(&email_clone, &token, &msg_id.id).await {
-                                            let (subject, sender, sender_name, recipient, body) = parse_gmail_message(&message);
-                                            
-                                            if !sender.is_empty() && !recipient.is_empty() {
-                                                // Create a database-style email object
-                                                let email_obj = crate::models::Email {
-                                                    id: Uuid::new_v4().to_string(),
-                                                    sender_id: sender.clone(),
-                                                    sender_email: sender,
-                                                    sender_name: Some(sender_name),
-                                                    recipient_email: recipient,
-                                                    subject,
-                                                    body,
-                                                    sent_at: message.internal_date.unwrap_or_else(|| "".to_string()),
-                                                    read_at: None, // Assume inbox emails are unread
-                                                    gmail_id: Some(message.id.clone()),
-                                                };
-                                                
-                                                // Cache individual email
+                                            if let Some(email_obj) = process_gmail_message(&message, &email_clone) {
                                                 let _ = redis_cache_clone.cache_email(&email_clone, &message.id, &email_obj).await;
-                                                
-                                                // Add to received emails
                                                 received_emails.push(email_obj);
                                             }
                                         }
                                     }
                                     
-                                    // Cache the processed messages if we got any
                                     if !received_emails.is_empty() {
                                         let _ = redis_cache_clone.cache_emails(&email_clone, "received", &received_emails).await;
-                                        println!("Updated cached received emails for {}", email_clone);
+                                        println!("Updated received emails cache for {}", email_clone);
                                     }
                                 }
                                 
-                                // Get sent messages
-                                if let Ok(sent_messages) = gmail_client_clone.get_messages(&email_clone, &token, Some("in:sent")).await {
-                                    println!("Retrieved {} sent messages in background refresh", sent_messages.len());
-                                    
-                                    // Process sent messages
+                                // Refresh sent messages
+                                if let Ok(messages) = gmail_client_clone.get_messages(&email_clone, &token, Some("in:sent")).await {
                                     let mut sent_emails = Vec::new();
-                                    let limit = std::cmp::min(10, sent_messages.len());
+                                    let limit = std::cmp::min(20, messages.len());
                                     
-                                    for msg_id in &sent_messages[0..limit] {
+                                    for msg_id in &messages[0..limit] {
                                         if let Ok(message) = gmail_client_clone.get_message_detail(&email_clone, &token, &msg_id.id).await {
-                                            let (subject, sender, sender_name, recipient, body) = parse_gmail_message(&message);
-                                            
-                                            if !sender.is_empty() && !recipient.is_empty() {
-                                                // Create a database-style email object
-                                                let email_obj = crate::models::Email {
-                                                    id: Uuid::new_v4().to_string(),
-                                                    sender_id: sender.clone(),
-                                                    sender_email: sender,
-                                                    sender_name: Some(sender_name),
-                                                    recipient_email: recipient,
-                                                    subject,
-                                                    body,
-                                                    sent_at: message.internal_date.unwrap_or_else(|| "".to_string()),
-                                                    read_at: Some("2023-01-01T00:00:00Z".to_string()), // Assume sent emails are read
-                                                    gmail_id: Some(message.id.clone()),
-                                                };
-                                                
-                                                // Cache individual email
+                                            if let Some(email_obj) = process_gmail_message(&message, &email_clone) {
                                                 let _ = redis_cache_clone.cache_email(&email_clone, &message.id, &email_obj).await;
-                                                
-                                                // Add to sent emails
                                                 sent_emails.push(email_obj);
                                             }
                                         }
                                     }
                                     
-                                    // Cache the processed messages if we got any
                                     if !sent_emails.is_empty() {
                                         let _ = redis_cache_clone.cache_emails(&email_clone, "sent", &sent_emails).await;
-                                        println!("Updated cached sent emails for {}", email_clone);
+                                        println!("Updated sent emails cache for {}", email_clone);
                                     }
                                 }
                             }
@@ -297,175 +281,148 @@ pub async fn get_emails(
                     
                     return HttpResponse::Ok().json(json!({
                         "success": true,
-                        "sent": cached_sent,
-                        "received": cached_received,
-                        "source": "cache"
+                        "emails": all_emails
                     }));
                 }
                 
-                // If no cache or refresh requested, try to get from Gmail API
+                // If Gmail API is available, fetch emails directly
                 if let Some(refresh_token) = refresh_token {
-                    println!("User has refresh token, attempting to fetch emails from Gmail API");
-                    // Try to get emails from Gmail API
                     match gmail_client.get_token(&email, &refresh_token).await {
                         Ok(access_token) => {
-                            println!("Successfully obtained access token for Gmail API, length: {}", access_token.len());
+                            let mut all_emails = Vec::new();
                             
-                            let mut received_emails = Vec::new();
-                            let mut sent_emails = Vec::new();
+                            // Build Gmail query from filters
+                            let mut gmail_query = String::new();
                             
-                            // Get received emails (limited to recent messages)
-                            println!("Fetching received emails from Gmail API");
-                            match gmail_client.get_messages(&email, &access_token, Some("in:inbox")).await {
-                                Ok(received_messages) => {
-                                    println!("Received {} message IDs from Gmail API", received_messages.len());
+                            // Convert our filters to Gmail query syntax
+                            if let Some(label) = &query.label {
+                                gmail_query.push_str(&format!("label:{} ", label));
+                            }
+                            
+                            if let Some(is_read) = query.is_read {
+                                if is_read {
+                                    gmail_query.push_str("is:read ");
+                                } else {
+                                    gmail_query.push_str("is:unread ");
+                                }
+                            }
+                            
+                            if let Some(search) = &query.search {
+                                gmail_query.push_str(&format!("{} ", search));
+                            }
+                            
+                            if let Some(sender) = &query.sender {
+                                gmail_query.push_str(&format!("from:{} ", sender));
+                            }
+                            
+                            if let Some(recipient) = &query.recipient {
+                                gmail_query.push_str(&format!("to:{} ", recipient));
+                            }
+                            
+                            // Use the Gmail query we constructed
+                            let query_param = if !gmail_query.is_empty() {
+                                Some(gmail_query.as_str())
+                            } else {
+                                None
+                            };
+                            
+                            // Get messages from Gmail API
+                            match gmail_client.get_messages(&email, &access_token, query_param).await {
+                                Ok(messages) => {
+                                    println!("Retrieved {} Gmail messages with filters: {:?}", messages.len(), query);
                                     
-                                    // Cache message IDs
-                                    let _ = redis_cache.cache_message_ids(&email, "in:inbox", &received_messages).await;
+                                    // Process messages
+                                    let limit = std::cmp::min(50, messages.len());
                                     
-                                    // Get details for each message (only recent ones - last 20)
-                                    let limit = std::cmp::min(20, received_messages.len());
-                                    for msg_id in &received_messages[0..limit] {
-                                        println!("Fetching details for message ID: {}", msg_id.id);
+                                    for msg_id in &messages[0..limit] {
                                         if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
                                             let (subject, sender, sender_name, recipient, body) = parse_gmail_message(&message);
-                                            println!("Parsed message: subject='{}', from='{}'", subject, sender);
                                             
                                             if !sender.is_empty() && !recipient.is_empty() {
+                                                let is_sent = message.label_ids.as_ref().map_or(false, |labels| labels.contains(&"SENT".to_string()));
+                                                
                                                 // Create a database-style email object
                                                 let email_obj = crate::models::Email {
                                                     id: Uuid::new_v4().to_string(),
                                                     sender_id: sender.clone(),
-                                                    sender_email: sender,
+                                                    sender_email: sender.clone(),
                                                     sender_name: Some(sender_name),
-                                                    recipient_email: recipient,
-                                                    subject,
-                                                    body,
-                                                    sent_at: message.internal_date.unwrap_or_else(|| "".to_string()),
-                                                    read_at: None, // We don't have this info from Gmail API
+                                                    recipient_email: recipient.clone(),
+                                                    subject: subject.clone(),
+                                                    body: body.clone(),
+                                                    sent_at: message.internal_date.clone().unwrap_or_else(|| "".to_string()),
+                                                    read_at: if is_sent { 
+                                                        Some(message.internal_date.clone().unwrap_or_else(|| "".to_string())) 
+                                                    } else { 
+                                                        None 
+                                                    },
                                                     gmail_id: Some(message.id.clone()),
+                                                    label_ids: message.label_ids.clone(),
                                                 };
                                                 
-                                                // Cache individual email
-                                                let _ = redis_cache.cache_email(&email, &message.id, &email_obj).await;
+                                                // Store in database (optional, can be disabled)
+                                                let _ = db::store_email(
+                                                    db_pool.get_ref(),
+                                                    &sender,
+                                                    &sender,
+                                                    &recipient,
+                                                    &subject,
+                                                    &body,
+                                                ).await;
                                                 
-                                                // Add to received emails
-                                                received_emails.push(email_obj);
-                                            } else {
-                                                println!("Skipping message with empty sender or recipient");
+                                                // Add to our collection
+                                                all_emails.push(email_obj);
                                             }
-                                        } else {
-                                            println!("Failed to fetch details for message ID: {}", msg_id.id);
                                         }
                                     }
                                     
-                                    // Cache the complete list of received emails
-                                    let _ = redis_cache.cache_emails(&email, "received", &received_emails).await;
+                                    // Apply manual filtering for results
+                                    all_emails = apply_filters_to_emails(all_emails, &query);
+                                    
+                                    return HttpResponse::Ok().json(json!({
+                                        "success": true,
+                                        "emails": all_emails,
+                                        "source": "gmail",
+                                        "filtered": true
+                                    }));
                                 }
                                 Err(e) => {
-                                    println!("Error fetching received emails from Gmail API: {}", e);
+                                    println!("Error fetching messages from Gmail API: {}", e);
                                 }
                             }
-                            
-                            // Get sent emails (limited to recent messages)
-                            println!("Fetching sent emails from Gmail API");
-                            match gmail_client.get_messages(&email, &access_token, Some("in:sent")).await {
-                                Ok(sent_messages) => {
-                                    println!("Received {} sent message IDs from Gmail API", sent_messages.len());
-                                    
-                                    // Cache message IDs
-                                    let _ = redis_cache.cache_message_ids(&email, "in:sent", &sent_messages).await;
-                                    
-                                    // Get details for each message (only recent ones - last 20)
-                                    let limit = std::cmp::min(20, sent_messages.len());
-                                    for msg_id in &sent_messages[0..limit] {
-                                        println!("Fetching details for sent message ID: {}", msg_id.id);
-                                        if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
-                                            let (subject, sender, sender_name, recipient, body) = parse_gmail_message(&message);
-                                            println!("Parsed sent message: subject='{}', to='{}'", subject, recipient);
-                                            
-                                            if !sender.is_empty() && !recipient.is_empty() {
-                                                // Create a database-style email object
-                                                let email_obj = crate::models::Email {
-                                                    id: Uuid::new_v4().to_string(),
-                                                    sender_id: sender.clone(),
-                                                    sender_email: sender,
-                                                    sender_name: Some(sender_name),
-                                                    recipient_email: recipient,
-                                                    subject,
-                                                    body,
-                                                    sent_at: message.internal_date.unwrap_or_else(|| "".to_string()),
-                                                    read_at: Some("2023-01-01T00:00:00Z".to_string()), // Assume sent emails are read
-                                                    gmail_id: Some(message.id.clone()),
-                                                };
-                                                
-                                                // Cache individual email
-                                                let _ = redis_cache.cache_email(&email, &message.id, &email_obj).await;
-                                                
-                                                // Add to sent emails
-                                                sent_emails.push(email_obj);
-                                            } else {
-                                                println!("Skipping sent message with empty sender or recipient");
-                                            }
-                                        } else {
-                                            println!("Failed to fetch details for sent message ID: {}", msg_id.id);
-                                        }
-                                    }
-                                    
-                                    // Cache the complete list of sent emails
-                                    let _ = redis_cache.cache_emails(&email, "sent", &sent_emails).await;
-                                }
-                                Err(e) => {
-                                    println!("Error fetching sent emails from Gmail API: {}", e);
-                                }
-                            }
-                            
-                            println!("Returning {} received and {} sent emails from Gmail API", received_emails.len(), sent_emails.len());
-                            // Return the emails from Gmail API
-                            return HttpResponse::Ok().json(json!({
-                                "success": true,
-                                "sent": sent_emails,
-                                "received": received_emails,
-                                "source": "gmail"
-                            }));
                         }
                         Err(e) => {
-                            // Log the error but continue to fallback to database
                             println!("Error getting Gmail access token: {}", e);
                         }
                     }
-                } else {
-                    println!("User does not have a refresh token, falling back to database");
                 }
                 
-                // Fallback to database emails if Gmail API didn't work
-                // Get sent emails from database
-                let sent_result = db::get_emails_for_user(db_pool.get_ref(), &email, true).await;
-                // Get received emails from database
-                let received_result = db::get_emails_for_user(db_pool.get_ref(), &email, false).await;
+                // Fallback to database if no cache or Gmail API
+                let received = match db::get_emails_for_user(db_pool.get_ref(), &email, false, Some(&query)).await {
+                    Ok(emails) => emails,
+                    Err(e) => {
+                        println!("Database error when fetching received emails: {}", e);
+                        Vec::new()
+                    }
+                };
                 
-                match (sent_result, received_result) {
-                    (Ok(sent), Ok(received)) => {
-                        // Cache database emails as well
-                        let _ = redis_cache.cache_emails(&email, "sent", &sent).await;
-                        let _ = redis_cache.cache_emails(&email, "received", &received).await;
-                        
-                        return HttpResponse::Ok().json(json!({
-                            "success": true,
-                            "sent": sent,
-                            "received": received,
-                            "source": "database"
-                        }));
+                let sent = match db::get_emails_for_user(db_pool.get_ref(), &email, true, Some(&query)).await {
+                    Ok(emails) => emails,
+                    Err(e) => {
+                        println!("Database error when fetching sent emails: {}", e);
+                        Vec::new()
                     }
-                    (Err(e), _) | (_, Err(e)) => {
-                        println!("Database error when fetching emails: {}", e);
-                        return HttpResponse::InternalServerError().json(json!({
-                            "success": false,
-                            "error": "Failed to fetch emails",
-                            "details": format!("{}", e)
-                        }));
-                    }
-                }
+                };
+                
+                // Combine emails from both queries
+                let all_emails = [sent, received].concat();
+                
+                return HttpResponse::Ok().json(json!({
+                    "success": true,
+                    "emails": all_emails,
+                    "source": "database",
+                    "filtered": true
+                }));
             }
             Ok(None) => {
                 println!("Invalid session token when fetching emails");
@@ -489,6 +446,95 @@ pub async fn get_emails(
         "success": false,
         "error": "Not authenticated"
     }))
+}
+
+// Apply filters directly to a list of emails (for cached results)
+fn apply_filters_to_emails(emails: Vec<crate::models::Email>, filter: &crate::models::EmailFilter) -> Vec<crate::models::Email> {
+    let mut filtered_emails = emails;
+    
+    // Filter by label
+    if let Some(label) = &filter.label {
+        filtered_emails = filtered_emails.into_iter().filter(|email| {
+            email.label_ids.as_ref().map_or(false, |labels| labels.contains(label))
+        }).collect();
+    }
+    
+    // Filter by read status
+    if let Some(is_read) = filter.is_read {
+        filtered_emails = filtered_emails.into_iter().filter(|email| {
+            if is_read {
+                email.read_at.is_some()
+            } else {
+                email.read_at.is_none()
+            }
+        }).collect();
+    }
+    
+    // Filter by search term
+    if let Some(search) = &filter.search {
+        let search_lower = search.to_lowercase();
+        filtered_emails = filtered_emails.into_iter().filter(|email| {
+            email.subject.to_lowercase().contains(&search_lower) ||
+            email.body.to_lowercase().contains(&search_lower) ||
+            email.sender_email.to_lowercase().contains(&search_lower) ||
+            email.recipient_email.to_lowercase().contains(&search_lower)
+        }).collect();
+    }
+    
+    // Filter by sender
+    if let Some(sender) = &filter.sender {
+        let sender_lower = sender.to_lowercase();
+        filtered_emails = filtered_emails.into_iter().filter(|email| {
+            email.sender_email.to_lowercase().contains(&sender_lower)
+        }).collect();
+    }
+    
+    // Filter by recipient
+    if let Some(recipient) = &filter.recipient {
+        let recipient_lower = recipient.to_lowercase();
+        filtered_emails = filtered_emails.into_iter().filter(|email| {
+            email.recipient_email.to_lowercase().contains(&recipient_lower)
+        }).collect();
+    }
+    
+    // Apply sorting
+    if let Some(sort_by) = &filter.sort_by {
+        use crate::models::SortField;
+        
+        filtered_emails.sort_by(|a, b| {
+            let order = match sort_by {
+                SortField::Date => a.sent_at.cmp(&b.sent_at),
+                SortField::Sender => a.sender_email.cmp(&b.sender_email),
+                SortField::Subject => a.subject.cmp(&b.subject),
+            };
+            
+            if let Some(sort_order) = &filter.sort_order {
+                use crate::models::SortOrder;
+                match sort_order {
+                    SortOrder::Asc => order,
+                    SortOrder::Desc => order.reverse(),
+                }
+            } else {
+                // Default to descending
+                order.reverse()
+            }
+        });
+    } else {
+        // Default sort by date descending
+        filtered_emails.sort_by(|a, b| b.sent_at.cmp(&a.sent_at));
+    }
+    
+    // Apply limit and offset
+    let offset = filter.offset.unwrap_or(0);
+    let limit = filter.limit.unwrap_or(usize::MAX);
+    
+    if offset > 0 || limit < filtered_emails.len() {
+        let start = std::cmp::min(offset, filtered_emails.len());
+        let end = std::cmp::min(start + limit, filtered_emails.len());
+        filtered_emails = filtered_emails[start..end].to_vec();
+    }
+    
+    filtered_emails
 }
 
 // Force refresh emails from Gmail API
@@ -587,7 +633,7 @@ pub async fn get_email(
                                         if !sender.is_empty() && !recipient.is_empty() {
                                             // Create a database-style email object
                                             let email_obj = crate::models::Email {
-                                                id: email_id.clone(),
+                                                id: Uuid::new_v4().to_string(),
                                                 sender_id: sender.clone(),
                                                 sender_email: sender,
                                                 sender_name: Some(sender_name),
@@ -597,6 +643,7 @@ pub async fn get_email(
                                                 sent_at: message.internal_date.unwrap_or_else(|| "".to_string()),
                                                 read_at: None,
                                                 gmail_id: Some(message.id.clone()),
+                                                label_ids: message.label_ids.clone(),
                                             };
                                             
                                             // Cache the email
@@ -688,4 +735,27 @@ pub async fn get_email(
         "success": false,
         "error": "Not authenticated"
     }))
+}
+
+// Helper function to process a Gmail message into our Email model
+fn process_gmail_message(message: &GmailMessage, user_email: &str) -> Option<crate::models::Email> {
+    let (subject, sender, sender_name, recipient, body) = parse_gmail_message(message);
+    
+    if !sender.is_empty() && !recipient.is_empty() {
+        Some(crate::models::Email {
+            id: Uuid::new_v4().to_string(),
+            sender_id: sender.clone(),
+            sender_email: sender,
+            sender_name: Some(sender_name),
+            recipient_email: recipient,
+            subject,
+            body,
+            sent_at: message.internal_date.clone().unwrap_or_else(|| "".to_string()),
+            read_at: None,
+            gmail_id: Some(message.id.clone()),
+            label_ids: message.label_ids.clone(),
+        })
+    } else {
+        None
+    }
 } 

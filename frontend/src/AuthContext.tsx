@@ -1,6 +1,14 @@
 // AuthContext.tsx
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 
+interface UserResponse {
+  authenticated: boolean;
+  email: string | null;
+  name: string | null;
+  picture: string | null;
+  message?: string;
+}
+
 interface AuthContextType {
   isAuthenticated: boolean;
   userEmail: string | null;
@@ -8,7 +16,7 @@ interface AuthContextType {
   userPicture: string | null;
   isLoading: boolean;
   checkAuthStatus: () => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -18,7 +26,7 @@ const AuthContext = createContext<AuthContextType>({
   userPicture: null,
   isLoading: true,
   checkAuthStatus: async () => {},
-  logout: () => {},
+  logout: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -30,7 +38,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const checkAuthStatus = async () => {
     try {
-      console.log('Checking authentication status...');
       setIsLoading(true);
       
       const response = await fetch('http://localhost:8080/api/user', {
@@ -40,22 +47,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         },
       });
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('Auth status response:', data);
-      
-      setIsAuthenticated(data.authenticated);
-      setUserEmail(data.email || null);
-      setUserName(data.name || null);
-      setUserPicture(data.picture || null);
-      
-      // If authenticated, ensure we're on the dashboard
-      if (data.authenticated && window.location.pathname === '/') {
-        console.log('Authenticated user on welcome page, redirecting to dashboard...');
-        window.location.href = '/dashboard';
+      const data: UserResponse = await response.json();
+      console.log('Auth check response:', data);
+
+      if (response.ok) {
+        setIsAuthenticated(data.authenticated);
+        setUserEmail(data.email);
+        setUserName(data.name);
+        setUserPicture(data.picture);
+
+        if (data.authenticated) {
+          console.log('User is authenticated:', data.email);
+        } else {
+          console.log('User is not authenticated:', data.message);
+          throw new Error(data.message || 'Not authenticated');
+        }
+      } else {
+        throw new Error('Failed to check authentication status');
       }
     } catch (error) {
       console.error('Authentication check failed:', error);
@@ -79,9 +87,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = async () => {
     try {
-      console.log('Logging out...');
-      
-      // Call the backend logout endpoint
       const response = await fetch('http://localhost:8080/api/logout', {
         method: 'POST',
         credentials: 'include',
@@ -91,21 +96,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
       
       if (!response.ok) {
-        console.error('Logout failed:', response.statusText);
-      } else {
-        console.log('Logout successful');
+        throw new Error('Logout failed');
       }
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      // Clear local auth state regardless of backend response
+
+      // Clear auth state
       setIsAuthenticated(false);
       setUserEmail(null);
       setUserName(null);
       setUserPicture(null);
-      
-      // Redirect to home
+
+      // Force reload to clear any cached state
       window.location.href = '/';
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still clear auth state on error
+      setIsAuthenticated(false);
+      setUserEmail(null);
+      setUserName(null);
+      setUserPicture(null);
     }
   };
 

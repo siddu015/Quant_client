@@ -1,5 +1,6 @@
 use sqlx::PgPool;
 use crate::db::email::init_email_table;
+use crate::db::labels::init_labels_table;
 
 pub async fn init(pool: &PgPool) -> Result<(), sqlx::Error> {
     // Create the users table if it doesn't exist
@@ -22,6 +23,9 @@ pub async fn init(pool: &PgPool) -> Result<(), sqlx::Error> {
     
     // Initialize email table
     init_email_table(pool).await?;
+    
+    // Initialize labels table
+    init_labels_table(pool).await?;
     
     println!("Database initialized successfully");
     Ok(())

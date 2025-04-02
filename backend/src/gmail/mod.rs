@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use serde_json::json;
+use crate::models::{GmailLabel, LabelColor};
 
 // Gmail API token response
 #[derive(Debug, Deserialize)]
@@ -95,6 +96,12 @@ pub struct GmailMessageId {
     pub id: String,
     #[serde(rename = "threadId")]
     pub thread_id: String,
+}
+
+// Gmail API label list response
+#[derive(Debug, Deserialize)]
+pub struct GmailLabelListResponse {
+    pub labels: Vec<GmailLabel>,
 }
 
 // Token cache for Gmail API
@@ -323,6 +330,51 @@ impl GmailClient {
 
         println!("Successfully sent Gmail message with ID: {}", send_response.id);
         Ok(send_response)
+    }
+
+    // Get labels from Gmail
+    pub async fn get_labels(&self, user_id: &str, access_token: &str) -> Result<Vec<GmailLabel>, ReqwestError> {
+        let url = format!(
+            "https://gmail.googleapis.com/gmail/v1/users/{}/labels",
+            user_id
+        );
+        
+        println!("Fetching Gmail labels: {}", url);
+        
+        let response = match self.http_client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", access_token))
+            .send()
+            .await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    println!("Error fetching labels: {}", e);
+                    return Err(e);
+                }
+            };
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Could not get error text".to_string());
+            println!("Gmail API error: Status {} - {}", status, error_text);
+            // Create a dummy error to return
+            return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
+        }
+        
+        let response_text = response.text().await?;
+        println!("Gmail API labels response: {}", response_text);
+        
+        let response_data = match serde_json::from_str::<GmailLabelListResponse>(&response_text) {
+            Ok(data) => data,
+            Err(e) => {
+                println!("Error parsing label list response: {}", e);
+                return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
+            }
+        };
+        
+        println!("Successfully fetched {} Gmail labels", response_data.labels.len());
+        
+        Ok(response_data.labels)
     }
 }
 
