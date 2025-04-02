@@ -56,7 +56,62 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
       console.log('Fetching emails for user:', userEmail);
       const result = await EmailService.getEmails();
       
-      // Cache the results - these should already be sorted by date
+      // Log to help debugging
+      console.log('Received email data:', {
+        sentCount: result.sent.length,
+        receivedCount: result.received.length,
+        sentIds: result.sent.map(e => e.id),
+        receivedIds: result.received.map(e => e.id)
+      });
+      
+      // Check for any duplicates in sent emails by ID
+      const sentEmailIds = result.sent.map(e => e.id);
+      const uniqueSentIds = new Set(sentEmailIds);
+      
+      if (sentEmailIds.length !== uniqueSentIds.size) {
+        console.warn(`Found ${sentEmailIds.length - uniqueSentIds.size} duplicate IDs in sent emails, but these should have been deduplicated already.`);
+        
+        // Additional deduplication just to be safe
+        const uniqueSentEmails = new Map<string, Email>();
+        result.sent.forEach(email => {
+          const key = email.gmail_id || email.id;
+          if (!uniqueSentEmails.has(key) || 
+              (email.sent_timestamp && uniqueSentEmails.get(key)!.sent_timestamp && 
+              email.sent_timestamp > uniqueSentEmails.get(key)!.sent_timestamp!)) {
+            uniqueSentEmails.set(key, email);
+          }
+        });
+        
+        // Replace the sent array with deduplicated version
+        result.sent = Array.from(uniqueSentEmails.values());
+        console.log(`After additional deduplication, sent count: ${result.sent.length}`);
+      }
+      
+      // Perform a duplicate check to ensure no email appears twice
+      const sentIds = new Set(result.sent.map(e => e.gmail_id || e.id));
+      const receivedIds = new Set(result.received.map(e => e.gmail_id || e.id));
+      const duplicates = Array.from(sentIds).filter(id => receivedIds.has(id));
+      
+      if (duplicates.length > 0) {
+        console.warn('Found duplicate email IDs across sent and received:', duplicates);
+        // Remove duplicates from received (keep them in sent)
+        const filteredReceived = result.received.filter(e => !sentIds.has(e.gmail_id || e.id));
+        result.received = filteredReceived;
+        console.log('After removing duplicates, received count:', result.received.length);
+      }
+      
+      // Extra check: Ensure no emails where user is both sender and recipient appear in both categories
+      if (userEmail) {
+        const selfSentEmails = result.received.filter(e => e.sender_email === userEmail);
+        if (selfSentEmails.length > 0) {
+          console.warn('Found self-sent emails in received folder:', selfSentEmails.map(e => e.id));
+          // Remove these from received as they should only be in sent
+          result.received = result.received.filter(e => e.sender_email !== userEmail);
+          console.log('After removing self-sent emails, received count:', result.received.length);
+        }
+      }
+      
+      // Cache the results - verify they're already sorted
       setCachedEmails(result);
       
       // Set emails based on mode
@@ -107,8 +162,25 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
     
     setIsLoading(true);
     try {
-      await EmailService.refreshEmails();
-      await fetchEmails(false, true); // Force refresh from server
+      console.log('Starting email refresh...');
+      // First clear the cached emails to ensure we get a fresh load
+      setCachedEmails(null);
+      
+      // Trigger the refresh on the backend
+      const refreshResult = await EmailService.refreshEmails();
+      console.log('Backend refresh result:', refreshResult);
+      
+      if (!refreshResult) {
+        console.warn('Backend refresh returned false, might need to retry');
+      }
+      
+      // Add a small delay to ensure backend processing is complete
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Force a complete reload from the server
+      await fetchEmails(false, true);
+      
+      console.log('Email refresh completed successfully');
     } catch (err) {
       console.error('Error refreshing emails:', err);
       setError('Failed to refresh emails');
@@ -130,8 +202,17 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
           console.log('Email marked as read successfully');
           // Update the email in our cached emails state
           if (cachedEmails) {
+            // Create a new date string for read_at
+            const readAt = new Date().toISOString();
+            
+            // Update the cached received emails
             const updatedReceived = cachedEmails.received.map(e => 
-              e.id === email.id ? { ...e, read_at: new Date().toISOString() } : e
+              e.id === email.id ? { ...e, read_at: readAt } : e
+            );
+            
+            // Update the email in our current list view
+            const updatedEmails = emails.map(e =>
+              e.id === email.id ? { ...e, read_at: readAt } : e
             );
             
             // Important: Don't change the order when updating the cache
@@ -139,6 +220,9 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
               ...cachedEmails,
               received: updatedReceived
             });
+            
+            // Update the current view
+            setEmails(updatedEmails);
           }
         } else {
           console.error('Failed to mark email as read');
