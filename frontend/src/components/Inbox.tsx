@@ -31,7 +31,7 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
     }
 
     if (showLoading) {
-      setIsLoading(true);
+    setIsLoading(true);
     }
     setError(null);
     
@@ -39,14 +39,22 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
       // If we have cached emails and not forcing refresh, use them
       if (cachedEmails && !forceRefresh) {
         console.log('Using cached emails');
+        
         if (mode === 'sent') {
-          // Use spread to create a new array reference and ensure we don't modify cache
-          setEmails([...cachedEmails.sent]);
+          // Create a new array and sort by timestamp (newest first)
+          const sortedSent = [...cachedEmails.sent].sort((a, b) => {
+            const timestampA = a.sent_timestamp || new Date(a.sent_at).getTime() || 0;
+            const timestampB = b.sent_timestamp || new Date(b.sent_at).getTime() || 0;
+            return timestampB - timestampA;
+          });
+          
+          setEmails(sortedSent);
         } else if (mode === 'inbox') {
           setEmails([...cachedEmails.received]);
         } else {
           setEmails([]);
         }
+        
         if (showLoading) {
           setIsLoading(false);
         }
@@ -55,14 +63,6 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
 
       console.log('Fetching emails for user:', userEmail);
       const result = await EmailService.getEmails();
-      
-      // Log to help debugging
-      console.log('Received email data:', {
-        sentCount: result.sent.length,
-        receivedCount: result.received.length,
-        sentIds: result.sent.map(e => e.id),
-        receivedIds: result.received.map(e => e.id)
-      });
       
       // Check for any duplicates in sent emails by ID
       const sentEmailIds = result.sent.map(e => e.id);
@@ -87,7 +87,15 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
         console.log(`After additional deduplication, sent count: ${result.sent.length}`);
       }
       
-      // Perform a duplicate check to ensure no email appears twice
+      // CRITICAL STEP: Ensure sent emails are sorted correctly
+      // Re-sort the sent emails to be absolutely sure they're in correct order
+      result.sent.sort((a, b) => {
+        const timestampA = a.sent_timestamp || new Date(a.sent_at).getTime() || 0;
+        const timestampB = b.sent_timestamp || new Date(b.sent_at).getTime() || 0;
+        return timestampB - timestampA; // Newest first
+      });
+      
+      // Check for any cross-category duplicates
       const sentIds = new Set(result.sent.map(e => e.gmail_id || e.id));
       const receivedIds = new Set(result.received.map(e => e.gmail_id || e.id));
       const duplicates = Array.from(sentIds).filter(id => receivedIds.has(id));
@@ -100,7 +108,7 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
         console.log('After removing duplicates, received count:', result.received.length);
       }
       
-      // Extra check: Ensure no emails where user is both sender and recipient appear in both categories
+      // Self-sent emails check
       if (userEmail) {
         const selfSentEmails = result.received.filter(e => e.sender_email === userEmail);
         if (selfSentEmails.length > 0) {
@@ -111,12 +119,27 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
         }
       }
       
-      // Cache the results - verify they're already sorted
+      // Cache the results - verify sorting is correct before setting
       setCachedEmails(result);
       
       // Set emails based on mode
       if (mode === 'sent') {
-        setEmails([...result.sent]); // Use spread to create a new array reference
+        // Verify proper sorting one last time
+        const sortedSent = [...result.sent].sort((a, b) => {
+          const timestampA = a.sent_timestamp || new Date(a.sent_at).getTime() || 0;
+          const timestampB = b.sent_timestamp || new Date(b.sent_at).getTime() || 0;
+          return timestampB - timestampA;
+        });
+        
+        // Check if sorting made any changes and log
+        const wasSorted = JSON.stringify(sortedSent.map(e => e.id)) === 
+                         JSON.stringify(result.sent.map(e => e.id));
+        
+        if (!wasSorted) {
+          console.warn('Final sorting changed the order of sent emails in Inbox component');
+        }
+        
+        setEmails(sortedSent);
       } else if (mode === 'inbox') {
         setEmails([...result.received]);
       } else {
@@ -145,9 +168,54 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
   useEffect(() => {
     if (cachedEmails) {
       console.log('Updating displayed emails from cache for mode:', mode);
-      // Always ensure emails are consistently sorted by date
+      
       if (mode === 'sent') {
-        setEmails([...cachedEmails.sent]); // Use spread to ensure we're not modifying the cached array
+        // Deep comparison of timestamps to ensure proper sorting of sent emails
+        console.log('Verifying sent email sort order in Inbox component');
+        
+        // Clone the emails to avoid modifying cache
+        const clonedSentEmails = JSON.parse(JSON.stringify(cachedEmails.sent)) as Email[];
+        
+        // Directly parse dates from sent_at for more reliable sorting
+        const emailsWithParsedDates = clonedSentEmails.map(email => {
+          try {
+            // Try to get a reliable date object first
+            const sentDate = new Date(email.sent_at);
+            const timestamp = !isNaN(sentDate.getTime()) ? sentDate.getTime() : 0;
+            
+            // Log the actual date parsing for debugging
+            console.log(`Email "${email.subject}" date: ${email.sent_at} → timestamp: ${timestamp}`);
+            
+            return {
+              ...email,
+              // Use parsed timestamp or existing timestamp, whichever is more recent
+              sent_timestamp: Math.max(timestamp, email.sent_timestamp || 0)
+            };
+          } catch (e) {
+            console.error(`Error parsing date for email ${email.id}:`, e);
+            return email;
+          }
+        });
+        
+        // Sort by timestamp with improved logging
+        const sortedSent = emailsWithParsedDates.sort((a, b) => {
+          const timestampA = a.sent_timestamp || 0;
+          const timestampB = b.sent_timestamp || 0;
+          
+          // Log comparison for debugging
+          console.log(`Comparing: ${a.subject} (${timestampA}) vs ${b.subject} (${timestampB}) = ${timestampB - timestampA}`);
+          
+          return timestampB - timestampA;
+        });
+        
+        // Log the final sorted order
+        console.log('FINAL SORTED ORDER:');
+        sortedSent.forEach((email, index) => {
+          const date = new Date(email.sent_at);
+          console.log(`${index}: ${email.subject} - ${date.toLocaleString()} (${email.sent_timestamp})`);
+        });
+        
+        setEmails(sortedSent);
       } else if (mode === 'inbox') {
         setEmails([...cachedEmails.received]);
       } else {
@@ -175,10 +243,44 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
       }
       
       // Add a small delay to ensure backend processing is complete
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 800));
       
-      // Force a complete reload from the server
+      // Force a complete reload from the server with explicit sorting
       await fetchEmails(false, true);
+      
+      // Double-check sorting for sent emails
+      if (mode === 'sent' && emails.length > 0) {
+        console.log('Verifying sent email order after refresh');
+        
+        // Create a new sorted copy with very explicit sorting by timestamp
+        const verifiedSorted = [...emails]
+          // Ensure all emails have valid timestamps
+          .map(email => {
+            if (!email.sent_timestamp) {
+              const timestamp = new Date(email.sent_at).getTime();
+              return {
+                ...email,
+                sent_timestamp: isNaN(timestamp) ? Date.now() - 1000000 : timestamp
+              };
+            }
+            return email;
+          })
+          // Sort by timestamp, newest first
+          .sort((a, b) => {
+            const timestampA = a.sent_timestamp || 0;
+            const timestampB = b.sent_timestamp || 0;
+            return timestampB - timestampA;
+          });
+        
+        // Log the sorted order for debugging
+        console.log('AFTER REFRESH - SENT EMAIL ORDER:');
+        verifiedSorted.forEach((email, i) => {
+          console.log(`${i}: ${email.subject} - ${new Date(email.sent_at).toLocaleString()} (${email.sent_timestamp})`);
+        });
+        
+        // Update emails with the guaranteed sorted version
+        setEmails(verifiedSorted);
+      }
       
       console.log('Email refresh completed successfully');
     } catch (err) {
@@ -187,11 +289,11 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, userEmail, fetchEmails]);
+  }, [isAuthenticated, userEmail, fetchEmails, mode, emails]);
 
   const handleSelectEmail = async (email: Email) => {
     setSelectedEmail(email);
-
+    
     // If it's a received email and not read yet, mark it as read
     if (email.recipient_email === userEmail && !email.read_at) {
       try {
@@ -394,14 +496,47 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
                         {(() => {
                           try {
                             const date = new Date(email.sent_at);
-                            // Format date as "MMM DD" or "MMM DD, YYYY" if not current year
+                            
+                            // First check if timestamp is valid
+                            if (isNaN(date.getTime())) {
+                              console.warn(`Invalid date for email ${email.id}: ${email.sent_at}`);
+                              return 'Unknown date';
+                            }
+                            
+                            // Format date as "MMM DD, HH:MM" or "MMM DD, YYYY, HH:MM" if not current year
                             const now = new Date();
                             const isCurrentYear = date.getFullYear() === now.getFullYear();
+                            const isSameDay = date.toDateString() === now.toDateString();
                             
-                            return isCurrentYear 
-                              ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                              : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            // If same day, show just the time
+                            if (isSameDay) {
+                              return date.toLocaleTimeString('en-US', { 
+                                hour: 'numeric', 
+                                minute: '2-digit',
+                                hour12: true 
+                              });
+                            }
+                            
+                            // If same year but not same day
+                            if (isCurrentYear) {
+                              return date.toLocaleDateString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit'
+                              });
+                            }
+                            
+                            // Different year
+                            return date.toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit'
+                            });
                           } catch (e) {
+                            console.error('Error formatting date:', e);
                             return 'Unknown date';
                           }
                         })()}
