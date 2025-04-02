@@ -61,12 +61,12 @@ pub async fn send_email(
 
                                     // Store in database
                                     let _ = db::store_email(
-                                        db_pool.get_ref(),
+                    db_pool.get_ref(),
                                         &email,
                                         &email,
-                                        &email_req.recipient_email,
-                                        &email_req.subject,
-                                        &email_req.body,
+                    &email_req.recipient_email,
+                    &email_req.subject,
+                    &email_req.body,
                                     ).await;
 
                                     // Update cache
@@ -76,19 +76,19 @@ pub async fn send_email(
 
                                     info!("Email sent and cached: {} -> {}", email, email_req.recipient_email);
                                     
-                                    return HttpResponse::Ok().json(json!({
-                                        "success": true,
+                        return HttpResponse::Ok().json(json!({
+                            "success": true,
                                         "email": email_obj,
-                                        "message": "Email sent successfully"
-                                    }));
-                                }
-                                Err(e) => {
+                            "message": "Email sent successfully"
+                        }));
+                    }
+                    Err(e) => {
                                     error!("Gmail API error: {}", e);
-                                    return HttpResponse::InternalServerError().json(json!({
-                                        "success": false,
-                                        "error": "Failed to send email",
-                                        "details": format!("{}", e)
-                                    }));
+                        return HttpResponse::InternalServerError().json(json!({
+                            "success": false,
+                            "error": "Failed to send email",
+                            "details": format!("{}", e)
+                        }));
                                 }
                             }
                         }
@@ -227,8 +227,8 @@ pub async fn get_emails(
                 // Fall back to cache if Gmail API fails or no refresh token
                 if let Ok(Some(cached)) = redis_cache.get_cached_emails(&email, &cache_key).await {
                     info!("Emails retrieved from cache");
-                    return HttpResponse::Ok().json(json!({
-                        "success": true,
+                        return HttpResponse::Ok().json(json!({
+                            "success": true,
                         "emails": cached,
                         "source": "cache"
                     }));
@@ -448,11 +448,11 @@ pub async fn refresh_emails(
                         }
                         Err(e) => {
                             error!("Gmail token error: {}", e);
-                            return HttpResponse::InternalServerError().json(json!({
-                                "success": false,
+                        return HttpResponse::InternalServerError().json(json!({
+                            "success": false,
                                 "error": "Failed to get Gmail token",
-                                "details": format!("{}", e)
-                            }));
+                            "details": format!("{}", e)
+                        }));
                         }
                     }
                 }

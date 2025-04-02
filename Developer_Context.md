@@ -40,6 +40,7 @@ Phase 3: Using Cache
 Phase 4:
 
 - Add support for Gmail labels and folders
+- Improved the dashbord UI/UX to meet the professional design
 - Implement search functionality across emails
 - Create filters and sorting options
 - Implement email threading for conversations
