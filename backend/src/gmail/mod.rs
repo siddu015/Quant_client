@@ -376,6 +376,63 @@ impl GmailClient {
         
         Ok(response_data.labels)
     }
+
+    // Modify message labels
+    pub async fn modify_message(
+        &self, 
+        user_id: &str, 
+        access_token: &str, 
+        message_id: &str,
+        add_labels: &Vec<String>,
+        remove_labels: &Vec<String>
+    ) -> Result<GmailMessage, ReqwestError> {
+        let url = format!(
+            "https://gmail.googleapis.com/gmail/v1/users/{}/messages/{}/modify",
+            user_id, message_id
+        );
+        
+        println!("Modifying Gmail message: {}", url);
+        println!("Adding labels: {:?}, Removing labels: {:?}", add_labels, remove_labels);
+        
+        let body = json!({
+            "addLabelIds": add_labels,
+            "removeLabelIds": remove_labels
+        });
+        
+        let response = match self.http_client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", access_token))
+            .json(&body)
+            .send()
+            .await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    println!("Error modifying message: {}", e);
+                    return Err(e);
+                }
+            };
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Could not get error text".to_string());
+            println!("Gmail API error: Status {} - {}", status, error_text);
+            return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
+        }
+        
+        let response_text = response.text().await?;
+        println!("Gmail API modify message response: {}", response_text);
+        
+        let message = match serde_json::from_str::<GmailMessage>(&response_text) {
+            Ok(msg) => msg,
+            Err(e) => {
+                println!("Error parsing modify message response: {}", e);
+                return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
+            }
+        };
+        
+        println!("Successfully modified Gmail message {}", message_id);
+        Ok(message)
+    }
 }
 
 // Create a shared Gmail client

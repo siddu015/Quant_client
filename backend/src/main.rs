@@ -80,6 +80,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/emails", web::get().to(handlers::get_emails))
             .route("/api/emails", web::post().to(handlers::send_email))
             .route("/api/emails/{id}", web::get().to(handlers::get_email))
+            .route("/api/emails/{id}/read", web::post().to(handlers::mark_email_as_read))
             // Cache control routes
             .route("/api/emails/refresh", web::post().to(handlers::refresh_emails))
             // Admin routes

@@ -3,7 +3,7 @@ use serde_json::json;
 use uuid::Uuid;
 use base64::{encode_config, STANDARD};
 use std::env;
-use log::{info, error};
+use log::{info, error, warn};
 
 use crate::db;
 use crate::models::SendEmailRequest;
@@ -515,6 +515,9 @@ pub async fn get_email(
                     }
                 }
                 
+                // Store a clone of refresh_token to avoid ownership issues
+                let refresh_token_clone = refresh_token.clone();
+                
                 // Check if this is a Gmail ID (starts with numbers/letters, not UUID format)
                 if let Some(refresh_token) = refresh_token {
                     // Check if this looks like a Gmail ID (not a UUID)
@@ -573,7 +576,48 @@ pub async fn get_email(
                         if found_email.sender_email == email || found_email.recipient_email == email {
                             // Mark as read if user is recipient and email is not read yet
                             if found_email.recipient_email == email && found_email.read_at.is_none() {
-                                // In a real implementation, we would update the read status
+                                // Mark email as read in database and update label_ids
+                                let now = chrono::Utc::now().to_rfc3339();
+                                let mut updated_email = found_email.clone();
+                                updated_email.read_at = Some(now.clone());
+                                
+                                // Remove UNREAD label if it exists
+                                if let Some(ref mut labels) = updated_email.label_ids {
+                                    if let Some(pos) = labels.iter().position(|label| label == "UNREAD") {
+                                        labels.remove(pos);
+                                        info!("Removed UNREAD label for email {}", email_id);
+                                    }
+                                }
+                                
+                                // Update in database
+                                if let Some(gmail_id) = &updated_email.gmail_id {
+                                    if let Some(refresh_token) = &refresh_token_clone {
+                                        // Update read status in Gmail via API
+                                        if let Ok(access_token) = gmail_client.get_token(&email, refresh_token).await {
+                                            let _ = gmail_client.modify_message(
+                                                &email, 
+                                                &access_token, 
+                                                gmail_id, 
+                                                &vec![], // add labels (none)
+                                                &vec!["UNREAD".to_string()] // remove labels (UNREAD)
+                                            ).await;
+                                            info!("Updated read status in Gmail for email {}", gmail_id);
+                                        }
+                                    }
+                                }
+                                
+                                // Update cache with new read status
+                                if let Some(ref gmail_id) = updated_email.gmail_id {
+                                    let _ = redis_cache.cache_email(&email, gmail_id, &updated_email).await;
+                                    info!("Updated cache with read status for email {}", gmail_id);
+                                }
+                                
+                                return HttpResponse::Ok().json(json!({
+                                    "success": true,
+                                    "email": updated_email,
+                                    "source": "database",
+                                    "read_updated": true
+                                }));
                             }
                             
                             // Cache the email if it has a Gmail ID
@@ -634,7 +678,7 @@ pub async fn get_email(
 }
 
 // Helper function to process a Gmail message into our Email model
-fn process_gmail_message(message: &GmailMessage, user_email: &str) -> Option<crate::models::Email> {
+fn process_gmail_message(message: &GmailMessage, _user_email: &str) -> Option<crate::models::Email> {
     let (subject, sender, sender_name, recipient, body) = parse_gmail_message(message);
     
     if !sender.is_empty() && !recipient.is_empty() {
@@ -653,5 +697,127 @@ fn process_gmail_message(message: &GmailMessage, user_email: &str) -> Option<cra
         })
     } else {
         None
+    }
+}
+
+// Mark an email as read
+pub async fn mark_email_as_read(
+    req: HttpRequest,
+    path: web::Path<String>,
+    db_pool: DbPool,
+    gmail_client: GmailClientData,
+    redis_cache: RedisCacheData,
+) -> impl Responder {
+    let email_id = path.into_inner();
+    
+    // Check if user is authenticated
+    if let Some(cookie) = req.cookie("session") {
+        let session_token = cookie.value().to_string();
+        
+        // Look up user by session token
+        match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
+            Ok(Some((email, _, _, refresh_token))) => {
+                info!("Marking email {} as read for user {}", email_id, email);
+                
+                // Get the email to check ownership and current read status
+                match db::get_email(db_pool.get_ref(), &email_id).await {
+                    Ok(Some(found_email)) => {
+                        // Check if user is recipient (only recipients can mark as read)
+                        if found_email.recipient_email != email {
+                            return HttpResponse::Forbidden().json(json!({
+                                "success": false,
+                                "error": "You can only mark emails where you are the recipient as read"
+                            }));
+                        }
+                        
+                        // Check if already read
+                        if found_email.read_at.is_some() {
+                            return HttpResponse::Ok().json(json!({
+                                "success": true,
+                                "email": found_email,
+                                "message": "Email already marked as read"
+                            }));
+                        }
+                        
+                        // Mark email as read in database and update label_ids
+                        let now = chrono::Utc::now().to_rfc3339();
+                        let mut updated_email = found_email.clone();
+                        updated_email.read_at = Some(now.clone());
+                        
+                        // Remove UNREAD label if it exists
+                        if let Some(ref mut labels) = updated_email.label_ids {
+                            if let Some(pos) = labels.iter().position(|label| label == "UNREAD") {
+                                labels.remove(pos);
+                                info!("Removed UNREAD label for email {}", email_id);
+                            }
+                        }
+                        
+                        // If it has a Gmail ID, update in Gmail
+                        if let Some(gmail_id) = &updated_email.gmail_id {
+                            if let Some(refresh_token) = &refresh_token {
+                                // Update read status in Gmail via API
+                                if let Ok(access_token) = gmail_client.get_token(&email, refresh_token).await {
+                                    match gmail_client.modify_message(
+                                        &email, 
+                                        &access_token, 
+                                        gmail_id, 
+                                        &vec![], // add labels (none)
+                                        &vec!["UNREAD".to_string()] // remove labels (UNREAD)
+                                    ).await {
+                                        Ok(_) => info!("Updated read status in Gmail for email {}", gmail_id),
+                                        Err(e) => warn!("Failed to update Gmail labels: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Update cache with new read status
+                        if let Some(ref gmail_id) = updated_email.gmail_id {
+                            let _ = redis_cache.cache_email(&email, gmail_id, &updated_email).await;
+                            info!("Updated cache with read status for email {}", gmail_id);
+                        }
+                        
+                        return HttpResponse::Ok().json(json!({
+                            "success": true,
+                            "email": updated_email,
+                            "message": "Email marked as read"
+                        }));
+                    }
+                    Ok(None) => {
+                        return HttpResponse::NotFound().json(json!({
+                            "success": false,
+                            "error": "Email not found"
+                        }));
+                    }
+                    Err(e) => {
+                        error!("Database error when getting email: {}", e);
+                        return HttpResponse::InternalServerError().json(json!({
+                            "success": false,
+                            "error": "Internal server error"
+                        }));
+                    }
+                }
+            }
+            Ok(None) => {
+                info!("Session not found: {}", session_token);
+                return HttpResponse::Unauthorized().json(json!({
+                    "success": false,
+                    "error": "Not authenticated"
+                }));
+            }
+            Err(e) => {
+                error!("Database error: {}", e);
+                return HttpResponse::InternalServerError().json(json!({
+                    "success": false,
+                    "error": "Internal server error"
+                }));
+            }
+        }
+    } else {
+        info!("No session cookie found");
+        return HttpResponse::Unauthorized().json(json!({
+            "success": false,
+            "error": "Not authenticated"
+        }));
     }
 } 

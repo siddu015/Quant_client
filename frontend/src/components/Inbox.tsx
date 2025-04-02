@@ -31,10 +31,10 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
     }
 
     if (showLoading) {
-      setIsLoading(true);
+    setIsLoading(true);
     }
     setError(null);
-
+    
     try {
       // If we have cached emails and not forcing refresh, use them
       if (cachedEmails && !forceRefresh) {
@@ -120,7 +120,29 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
 
     // If it's a received email and not read yet, mark it as read
     if (email.recipient_email === userEmail && !email.read_at) {
-      await fetchEmails();
+      try {
+        console.log('Marking email as read:', email.id);
+        const success = await EmailService.markAsRead(email.id);
+        
+        if (success) {
+          console.log('Email marked as read successfully');
+          // Update the email in our cached emails state
+          if (cachedEmails) {
+            const updatedReceived = cachedEmails.received.map(e => 
+              e.id === email.id ? { ...e, read_at: new Date().toISOString() } : e
+            );
+            
+            setCachedEmails({
+              ...cachedEmails,
+              received: updatedReceived
+            });
+          }
+        } else {
+          console.error('Failed to mark email as read');
+        }
+      } catch (err) {
+        console.error('Error marking email as read:', err);
+      }
     }
   };
 
@@ -138,7 +160,7 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
   if (isLoading) {
     return (
       <div className="bg-gray-900/30 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-gray-800/50">
-        <div className="flex justify-center items-center h-64">
+      <div className="flex justify-center items-center h-64">
           <div className="relative w-12 h-12">
             <div className="absolute inset-0 border-4 border-blue-500/30 rounded-full"></div>
             <div className="absolute inset-0 border-t-4 border-blue-500 rounded-full animate-spin"></div>
@@ -153,17 +175,17 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
     return (
       <div className="bg-gray-900/30 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-gray-800/50 p-6">
         <div className="bg-red-900/30 border border-red-800 text-red-200 px-4 py-3 rounded-xl flex items-start" role="alert">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-          </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+        </svg>
           <div className="flex-grow">
             <p className="font-medium">{error}</p>
-            <button
+          <button 
               onClick={handleRetry}
               className="mt-2 bg-red-800 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm transition-colors duration-200"
-            >
-              Try Again
-            </button>
+          >
+            Try Again
+          </button>
           </div>
         </div>
       </div>
@@ -186,21 +208,21 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
           {mode === 'inbox' ? (
             <>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              Inbox
-              {unreadCount > 0 && (
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            Inbox
+            {unreadCount > 0 && (
                 <span className="ml-2 bg-blue-500 text-white px-2 py-0.5 rounded-full text-xs">
-                  {unreadCount}
-                </span>
-              )}
+                {unreadCount}
+              </span>
+            )}
             </>
           ) : mode === 'sent' ? (
             <>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-              Sent
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+            Sent
             </>
           ) : mode === 'drafts' ? (
             <>
@@ -227,7 +249,7 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
           <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-        </button>
+          </button>
       </div>
 
       {/* Email list */}
@@ -333,7 +355,7 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                        </svg>
+              </svg>
                         {email.category}
                       </span>
                     )}
@@ -348,7 +370,7 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
                   {/* Message preview only shown when expanded */}
                 </div>
               </div>
-            </div>
+          </div>
           ))
         )}
       </div>

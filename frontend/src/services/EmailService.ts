@@ -32,17 +32,25 @@ export const GMAIL_LABELS = {
  * @returns Valid ISO date string
  */
 const formatValidDate = (dateStr: string | undefined): string => {
-  if (!dateStr) return new Date().toISOString();
+  if (!dateStr) {
+    console.warn('Empty date received in formatValidDate');
+    return new Date().toISOString();
+  }
+  
+  console.log('Formatting date:', dateStr, 'Type:', typeof dateStr);
   
   try {
     const date = new Date(dateStr);
     // Check if date is valid
     if (!isNaN(date.getTime())) {
-      return date.toISOString();
+      const iso = date.toISOString();
+      console.log('Valid date converted to:', iso);
+      return iso;
     }
+    console.warn('Invalid date detected:', dateStr);
     return new Date().toISOString();
   } catch (e) {
-    console.warn('Invalid date format:', dateStr);
+    console.error('Error parsing date:', dateStr, e);
     return new Date().toISOString();
   }
 };
@@ -74,6 +82,22 @@ const processEmails = (emails: Email[]): Email[] => {
     const important = labelIds.includes(GMAIL_LABELS.IMPORTANT) || 
                        labelIds.includes(GMAIL_LABELS.STARRED);
     
+    // Determine if unread based on UNREAD label
+    // If the email has the UNREAD label, it means it hasn't been read yet
+    // Or if read_at is null, it means it hasn't been read yet
+    const isUnread = labelIds.includes(GMAIL_LABELS.UNREAD) || email.read_at === null;
+    
+    // Override read_at if we have label information indicating unread status
+    let updatedReadAt = email.read_at;
+    if (labelIds.includes(GMAIL_LABELS.UNREAD)) {
+      // If it has UNREAD label, make sure read_at is null
+      updatedReadAt = null;
+    } else if (email.read_at === null && !labelIds.includes(GMAIL_LABELS.UNREAD)) {
+      // If it doesn't have UNREAD label but read_at is null, set it to now 
+      // (assuming it's been read at some point)
+      updatedReadAt = new Date().toISOString();
+    }
+    
     // Determine category from Gmail category labels
     let category = '';
     if (labelIds.includes(GMAIL_LABELS.CATEGORY_PERSONAL)) category = 'Personal';
@@ -86,6 +110,7 @@ const processEmails = (emails: Email[]): Email[] => {
     return {
       ...email,
       sent_at: formattedSentAt,
+      read_at: updatedReadAt,
       important,
       category: category || undefined
     };
@@ -288,5 +313,53 @@ export const EmailService = {
   // Filter unread emails
   filterUnread(emails: Email[]): Email[] {
     return emails.filter(email => !email.read_at);
+  },
+  
+  // Mark an email as read
+  async markAsRead(emailId: string): Promise<boolean> {
+    try {
+      console.log('Marking email as read:', emailId);
+      
+      if (!emailId) {
+        console.error('Invalid email ID provided');
+        return false;
+      }
+      
+      // Fetch the specific email to make sure we get the latest version with updated labels
+      const email = await this.getEmail(parseInt(emailId));
+      
+      if (!email) {
+        console.error('Could not find email to mark as read:', emailId);
+        return false;
+      }
+      
+      // If already read, no need to do anything
+      if (email.read_at) {
+        console.log('Email already marked as read');
+        return true;
+      }
+      
+      // Update the email's read status via the Gmail API
+      const response = await fetch(`${API_URL}/api/emails/${emailId}/read`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to mark email as read:', response.statusText);
+        return false;
+      }
+      
+      const data = await response.json();
+      console.log('Mark as read response:', data);
+      
+      return data.success;
+    } catch (error) {
+      console.error('Error marking email as read:', error);
+      return false;
+    }
   }
 };
