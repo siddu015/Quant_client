@@ -89,29 +89,41 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({ onSend, onCancel, isOpen })
       {/* Form */}
       <form onSubmit={handleSubmit} className="p-4 space-y-4">
         <div>
+          <label htmlFor="recipient" className="block text-sm font-medium text-gray-400 mb-1">
+            To:
+          </label>
           <input
+            id="recipient"
             type="email"
             value={recipient}
             onChange={(e) => setRecipient(e.target.value)}
             required
             className="w-full bg-gray-800/30 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
-            placeholder="To: recipient@example.com"
+            placeholder="recipient@example.com"
           />
         </div>
 
         <div>
+          <label htmlFor="subject" className="block text-sm font-medium text-gray-400 mb-1">
+            Subject:
+          </label>
           <input
+            id="subject"
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             required
             className="w-full bg-gray-800/30 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
-            placeholder="Subject"
+            placeholder="Enter subject"
           />
         </div>
 
         <div>
+          <label htmlFor="body" className="block text-sm font-medium text-gray-400 mb-1">
+            Message:
+          </label>
           <textarea
+            id="body"
             value={body}
             onChange={(e) => setBody(e.target.value)}
             required

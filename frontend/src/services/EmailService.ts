@@ -11,6 +11,65 @@ interface UserResponse {
   message?: string;
 }
 
+// Gmail label mapping - all possible labels from Gmail API
+export const GMAIL_LABELS = {
+  IMPORTANT: 'IMPORTANT',
+  CATEGORY_PERSONAL: 'CATEGORY_PERSONAL',
+  CATEGORY_SOCIAL: 'CATEGORY_SOCIAL',
+  CATEGORY_UPDATES: 'CATEGORY_UPDATES',
+  CATEGORY_FORUMS: 'CATEGORY_FORUMS',
+  CATEGORY_PROMOTIONS: 'CATEGORY_PROMOTIONS',
+  UNREAD: 'UNREAD',
+  INBOX: 'INBOX',
+  SENT: 'SENT',
+  DRAFT: 'DRAFT',
+  STARRED: 'STARRED'
+};
+
+/**
+ * Process emails to extract label information
+ * Converts Gmail API label IDs to user-friendly properties
+ */
+const processEmails = (emails: Email[]): Email[] => {
+  if (!emails || !Array.isArray(emails)) {
+    console.warn('Invalid emails array in processEmails', emails);
+    return [];
+  }
+  
+  return emails.map(email => {
+    // Ensure the email has basic required properties
+    if (!email || typeof email !== 'object') {
+      console.warn('Invalid email object in processEmails', email);
+      return email;
+    }
+    
+    // Use existing email data, but parse label_ids to determine properties
+    const labelIds = email.label_ids || [];
+    
+    // Set important flag based on IMPORTANT or STARRED label
+    const important = labelIds.includes(GMAIL_LABELS.IMPORTANT) || 
+                       labelIds.includes(GMAIL_LABELS.STARRED);
+    
+    // Determine category from Gmail category labels
+    let category = '';
+    if (labelIds.includes(GMAIL_LABELS.CATEGORY_PERSONAL)) category = 'Personal';
+    else if (labelIds.includes(GMAIL_LABELS.CATEGORY_SOCIAL)) category = 'Social';
+    else if (labelIds.includes(GMAIL_LABELS.CATEGORY_UPDATES)) category = 'Updates';
+    else if (labelIds.includes(GMAIL_LABELS.CATEGORY_FORUMS)) category = 'Forums';
+    else if (labelIds.includes(GMAIL_LABELS.CATEGORY_PROMOTIONS)) category = 'Promotions';
+    
+    // Enhanced email object with processed label data
+    return {
+      ...email,
+      important,
+      category: category || undefined
+    };
+  });
+};
+
+/**
+ * Email service for handling email operations
+ */
 export const EmailService = {
   // Get all emails (both sent and received)
   async getEmails(): Promise<{ sent: Email[], received: Email[] }> {
@@ -55,21 +114,36 @@ export const EmailService = {
         const userEmail = userData.email;
         console.log('Categorizing emails for user:', userEmail);
         
-        const sent = data.emails.filter((email: Email) => 
+        // Process and categorize emails
+        const processedEmails = processEmails(data.emails);
+        
+        const sent = processedEmails.filter((email: Email) => 
           email.sender_email === userEmail
         );
-        const received = data.emails.filter((email: Email) => 
+        const received = processedEmails.filter((email: Email) => 
           email.recipient_email === userEmail
         );
+        
+        // Sort emails by date, newest first
+        sent.sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+        received.sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
         
         console.log(`Categorized ${sent.length} sent and ${received.length} received emails`);
         return { sent, received };
       }
       
-      // Handle legacy format if it exists
+      // Handle legacy format if it exists (process both sent and received arrays)
       if (Array.isArray(data.sent) && Array.isArray(data.received)) {
         console.log('Using legacy email format');
-        return data;
+        
+        // Process and sort both arrays
+        const sent = processEmails(data.sent)
+          .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+        
+        const received = processEmails(data.received)
+          .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+        
+        return { sent, received };
       }
       
       console.error('Invalid email response format:', data);
@@ -105,7 +179,9 @@ export const EmailService = {
         return null;
       }
       
-      return data.email;
+      // Process email to include label information
+      const processedEmail = processEmails([data.email])[0];
+      return processedEmail;
     } catch (error) {
       console.error(`Error fetching email ${id}:`, error);
       return null;
@@ -173,4 +249,19 @@ export const EmailService = {
       return false;
     }
   },
+  
+  // Filter emails by category
+  filterByCategory(emails: Email[], category: string): Email[] {
+    return emails.filter(email => email.category === category);
+  },
+  
+  // Filter important emails
+  filterImportant(emails: Email[]): Email[] {
+    return emails.filter(email => email.important);
+  },
+  
+  // Filter unread emails
+  filterUnread(emails: Email[]): Email[] {
+    return emails.filter(email => !email.read_at);
+  }
 };

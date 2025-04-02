@@ -269,19 +269,79 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <p className={`text-sm font-medium ${email.read_at ? 'text-gray-400' : 'text-gray-200'}`}>
-                      {mode === 'inbox' ? email.sender_email : email.recipient_email}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(email.sent_at).toLocaleString()}
+                    <div>
+                      <span className="text-xs text-gray-500 mb-1 inline-block">
+                        {mode === 'inbox' ? 'From:' : 'To:'}
+                      </span>
+                      <p className={`text-sm font-medium ${email.read_at ? 'text-gray-400' : 'text-gray-200'}`}>
+                        {mode === 'inbox' ? email.sender_email : email.recipient_email}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500 mb-1 inline-block">
+                        Date:
+                      </span>
+                      <p className="text-xs text-gray-500">
+                        {new Date(email.sent_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Email labels/tags */}
+                  <div className="flex flex-wrap gap-2 my-2">
+                    {!email.read_at && mode === 'inbox' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        Unread
+                      </span>
+                    )}
+                    
+                    {email.important && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                        Important
+                      </span>
+                    )}
+                    
+                    {email.attachments && email.attachments.length > 0 && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                        Attachment
+                      </span>
+                    )}
+                    
+                    {email.category && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                        </svg>
+                        {email.category}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="mt-2">
+                    <span className="text-xs text-gray-500 mb-1 inline-block">
+                      Subject:
+                    </span>
+                    <h3 className={`text-base ${email.read_at ? 'text-gray-400' : 'text-gray-200'} truncate`}>
+                      {email.subject}
+                    </h3>
+                  </div>
+                  <div className="mt-2">
+                    <span className="text-xs text-gray-500 mb-1 inline-block">
+                      Message:
+                    </span>
+                    <p className="text-sm text-gray-500 line-clamp-2">
+                      {email.body}
                     </p>
                   </div>
-                  <h3 className={`mt-1 text-base ${email.read_at ? 'text-gray-400' : 'text-gray-200'} truncate`}>
-                    {email.subject}
-                  </h3>
-                  <p className="mt-1 text-sm text-gray-500 line-clamp-2">
-                    {email.body}
-                  </p>
                 </div>
               </div>
             </div>

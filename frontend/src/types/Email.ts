@@ -11,6 +11,14 @@ export interface Email {
   read_at: string | null;
   gmail_id?: string;
   label_ids?: string[];
+  important?: boolean;
+  category?: string;
+  attachments?: {
+    id: string;
+    name: string;
+    mime_type: string;
+    size: number;
+  }[];
 }
 
 export interface SendEmailRequest {
