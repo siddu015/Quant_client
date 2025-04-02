@@ -26,7 +26,9 @@ async fn main() -> std::io::Result<()> {
     
     // Configure logging
     Builder::new()
-        .filter_level(LevelFilter::Debug)
+        .filter_level(LevelFilter::Info)
+        .format_timestamp(None)
+        .format_target(false)
         .init();
     
     // Database setup

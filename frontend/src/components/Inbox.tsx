@@ -182,55 +182,6 @@ const Inbox: React.FC = () => {
   // Render inbox
   return (
     <div className="bg-gray-900 rounded-lg shadow-xl overflow-hidden">
-      {/* Debug panel */}
-      <div className="p-4 bg-gray-800 border-b border-gray-700">
-        <details className="text-xs text-gray-400">
-          <summary className="cursor-pointer">Debug Panel</summary>
-          <div className="mt-2 p-2 bg-gray-900 rounded">
-            <p>Current user email: {userEmail || 'Not set'}</p>
-            <div className="flex mt-2">
-              <input
-                type="text"
-                className="flex-1 p-1 text-black rounded-l"
-                placeholder="Enter email for testing"
-                defaultValue={userEmail || ''}
-                id="debug-email-input"
-              />
-              <button
-                className="bg-blue-600 px-2 py-1 rounded-r text-white"
-                onClick={() => {
-                  const input = document.getElementById('debug-email-input') as HTMLInputElement;
-                  if (input && input.value) {
-                    localStorage.setItem('userEmail', input.value);
-                    console.log('Manually set user email to:', input.value);
-                    fetchEmails(true);
-                  }
-                }}
-              >
-                Set
-              </button>
-            </div>
-            <div className="mt-2">
-              <button
-                className="bg-red-600 px-2 py-1 rounded text-white mr-2"
-                onClick={() => {
-                  localStorage.removeItem('userEmail');
-                  console.log('Cleared user email');
-                }}
-              >
-                Clear Email
-              </button>
-              <button
-                className="bg-green-600 px-2 py-1 rounded text-white"
-                onClick={() => fetchEmails(true)}
-              >
-                Refresh Emails
-              </button>
-            </div>
-          </div>
-        </details>
-      </div>
-
       <div className="p-4 bg-gray-800/50 border-b border-gray-700 flex justify-between items-center">
         <h2 className="text-white text-xl font-semibold flex items-center">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
