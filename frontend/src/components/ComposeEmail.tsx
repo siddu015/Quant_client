@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 
 interface ComposeEmailProps {
-  onSend: (email: { recipient: string; subject: string; body: string }) => void;
+  onSend: (email: { recipient: string; subject: string; body: string; encrypt: boolean }) => void;
   onCancel: () => void;
   isOpen: boolean;
 }
@@ -11,6 +11,7 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({ onSend, onCancel, isOpen })
   const [recipient, setRecipient] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [encrypt, setEncrypt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
 
@@ -18,10 +19,11 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({ onSend, onCancel, isOpen })
     e.preventDefault();
     setIsLoading(true);
     try {
-      await onSend({ recipient, subject, body });
+      await onSend({ recipient, subject, body, encrypt });
       setRecipient('');
       setSubject('');
       setBody('');
+      setEncrypt(false);
     } finally {
       setIsLoading(false);
     }
@@ -131,6 +133,32 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({ onSend, onCancel, isOpen })
             className="w-full bg-gray-800/30 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200 resize-none"
             placeholder="Write your message here..."
           />
+        </div>
+
+        <div className="flex items-center">
+          <label className="flex items-center cursor-pointer">
+            <div className="relative">
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={encrypt}
+                onChange={() => setEncrypt(!encrypt)}
+              />
+              <div className={`block w-10 h-6 rounded-full transition-colors duration-200 ${encrypt ? 'bg-blue-500' : 'bg-gray-700'}`}></div>
+              <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 ${encrypt ? 'transform translate-x-4' : ''}`}></div>
+            </div>
+            <div className="ml-3 text-sm font-medium text-gray-400">
+              Quantum Encrypt
+              {encrypt && (
+                <span className="inline-flex items-center ml-2 px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  Secure
+                </span>
+              )}
+            </div>
+          </label>
         </div>
 
         <div className="flex justify-end">

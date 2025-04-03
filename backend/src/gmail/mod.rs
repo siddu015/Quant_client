@@ -549,4 +549,17 @@ fn extract_message_body(payload: &GmailPayload) -> String {
     String::new()
 }
 
+// Process a SendMessageResponse into basic components for creating Email objects
+pub fn process_send_message_response(message: &SendMessageResponse, from_email: &str, to_email: &str, 
+                                   subject: &str, body: &str) -> (String, String, String, String, String) {
+    // Return the components directly from the inputs, since SendMessageResponse doesn't have these fields
+    (
+        subject.to_string(),
+        from_email.to_string(),
+        extract_sender_name(from_email),  // Extract name from email or use empty string
+        to_email.to_string(),
+        body.to_string()
+    )
+}
+
 // A simple function that returns a reqwest error with the given message

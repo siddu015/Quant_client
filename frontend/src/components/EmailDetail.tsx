@@ -1,5 +1,5 @@
 // EmailDetail.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { Email } from '../types/Email';
 import { useAuth } from '../AuthContext';
 
@@ -11,6 +11,8 @@ interface EmailDetailProps {
 const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
   const { userEmail } = useAuth();
   const isSentEmail = email.sender_email === userEmail;
+  const [isDecrypting, setIsDecrypting] = useState(false);
+  const [decryptedEmail, setDecryptedEmail] = useState<Email | null>(null);
 
   // Format date for display
   const formatDate = (dateString: string | null) => {
@@ -57,6 +59,41 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
   };
 
   const senderAvatarColor = getAvatarColor(email.sender_email);
+
+  // Handle decryption
+  const handleDecrypt = async () => {
+    try {
+      setIsDecrypting(true);
+      const response = await fetch(`http://localhost:8080/api/emails/${email.id}/decrypt`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to decrypt email:', response.statusText);
+        throw new Error(`Failed to decrypt email: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      if (!data.success) {
+        console.error('Failed to decrypt email:', data.error || 'Unknown error');
+        throw new Error(data.error || 'Failed to decrypt email');
+      }
+      
+      setDecryptedEmail(data.email);
+    } catch (error) {
+      console.error('Error decrypting email:', error);
+      alert('Failed to decrypt message. Please try again later.');
+    } finally {
+      setIsDecrypting(false);
+    }
+  };
+
+  // Use decrypted version if available
+  const displayEmail = decryptedEmail || email;
 
   return (
     <div className="bg-gray-900/30 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-gray-800/50">
@@ -111,6 +148,14 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
               {email.category}
             </span>
           )}
+          {email.is_encrypted && (
+            <span className="bg-blue-900/40 text-blue-400 border border-blue-500/30 px-3 py-1 rounded-xl text-sm flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              Quantum Encrypted
+            </span>
+          )}
         </div>
       </div>
 
@@ -124,24 +169,24 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
             <div className="flex flex-col">
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-400 mb-1">Subject:</label>
-                <h2 className="text-xl font-semibold text-gray-200">{email.subject}</h2>
+                <h2 className="text-xl font-semibold text-gray-200">{displayEmail.subject}</h2>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-1">From:</label>
-                  <p className="text-sm text-gray-300">{email.sender_email}</p>
+                  <p className="text-sm text-gray-300">{displayEmail.sender_email}</p>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-1">To:</label>
-                  <p className="text-sm text-gray-300">{email.recipient_email}</p>
+                  <p className="text-sm text-gray-300">{displayEmail.recipient_email}</p>
                 </div>
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-1">Date:</label>
-                <p className="text-sm text-gray-300">{formatDate(email.sent_at)}</p>
+                <p className="text-sm text-gray-300">{formatDate(displayEmail.sent_at)}</p>
               </div>
             </div>
           </div>
@@ -149,9 +194,50 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
 
         <div className="mt-8">
           <label className="block text-sm font-medium text-gray-400 mb-2">Message:</label>
-          <div className="bg-gray-800/20 rounded-xl p-6 text-gray-300 whitespace-pre-wrap">
-            {email.body}
-          </div>
+          {email.is_encrypted && !decryptedEmail ? (
+            <div className="bg-gray-800/20 rounded-xl p-6 text-center">
+              <div className="bg-blue-900/30 rounded-xl p-6 mb-4">
+                <div className="flex justify-center mb-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-blue-400 mb-2">Quantum Encrypted Message</h3>
+                <p className="text-gray-300 mb-4">This message is encrypted with quantum-resistant encryption.</p>
+                <button
+                  onClick={handleDecrypt}
+                  disabled={isDecrypting}
+                  className={`w-full py-2 px-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-lg shadow-lg transition-all duration-200 ${isDecrypting ? 'opacity-70 cursor-not-allowed' : ''}`}
+                >
+                  {isDecrypting ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Decrypting Message...
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                      </svg>
+                      Decrypt Message
+                    </span>
+                  )}
+                </button>
+              </div>
+              
+              <div className="text-gray-400 text-sm">
+                <p>The content of this message is encrypted and can only be viewed with your private key.</p>
+                <p>Click the button above to decrypt the message.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-gray-800/20 rounded-xl p-6 text-gray-300 whitespace-pre-wrap">
+              {displayEmail.body}
+            </div>
+          )}
         </div>
       </div>
     </div>

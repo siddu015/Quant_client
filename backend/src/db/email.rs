@@ -16,7 +16,9 @@ pub async fn init_email_table(pool: &PgPool) -> Result<(), sqlx::Error> {
             body TEXT NOT NULL,
             sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             read_at TIMESTAMPTZ,
-            gmail_id TEXT
+            gmail_id TEXT,
+            is_encrypted BOOLEAN DEFAULT FALSE,
+            raw_encrypted_content TEXT
         )
         "#
     )
@@ -35,25 +37,48 @@ pub async fn store_email(
     recipient_email: &str,
     subject: &str,
     body: &str,
+    is_encrypted: bool,
+    raw_encrypted_content: Option<&str>,
 ) -> Result<String, sqlx::Error> {
     // Generate a new UUID
     let email_uuid = Uuid::new_v4();
     let email_id = email_uuid.to_string();
     
-    sqlx::query(
-        r#"
-        INSERT INTO emails (id, sender_id, sender_email, recipient_email, subject, body)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        "#
-    )
-    .bind(email_uuid) // Bind the UUID directly, not the string
-    .bind(sender_id)
-    .bind(sender_email)
-    .bind(recipient_email)
-    .bind(subject)
-    .bind(body)
-    .execute(pool)
-    .await?;
+    let query = match raw_encrypted_content {
+        Some(content) => {
+            sqlx::query(
+                r#"
+                INSERT INTO emails (id, sender_id, sender_email, recipient_email, subject, body, is_encrypted, raw_encrypted_content)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                "#
+            )
+            .bind(email_uuid)
+            .bind(sender_id)
+            .bind(sender_email)
+            .bind(recipient_email)
+            .bind(subject)
+            .bind(body)
+            .bind(is_encrypted)
+            .bind(content)
+        },
+        None => {
+            sqlx::query(
+                r#"
+                INSERT INTO emails (id, sender_id, sender_email, recipient_email, subject, body, is_encrypted)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                "#
+            )
+            .bind(email_uuid)
+            .bind(sender_id)
+            .bind(sender_email)
+            .bind(recipient_email)
+            .bind(subject)
+            .bind(body)
+            .bind(is_encrypted)
+        }
+    };
+    
+    query.execute(pool).await?;
     
     Ok(email_id)
 }
@@ -198,6 +223,8 @@ pub async fn get_emails_for_user(
             read_at: format_timestamp(read_at),
             gmail_id: row.get("gmail_id"),
             label_ids,
+            is_encrypted: row.try_get("is_encrypted").unwrap_or(false),
+            raw_encrypted_content: row.try_get("raw_encrypted_content").ok(),
         }
     }).collect();
     
@@ -250,6 +277,8 @@ pub async fn get_email(
             read_at: format_timestamp(read_at),
             gmail_id: row.get("gmail_id"),
             label_ids,
+            is_encrypted: row.try_get("is_encrypted").unwrap_or(false),
+            raw_encrypted_content: row.try_get("raw_encrypted_content").ok(),
         }
     });
     

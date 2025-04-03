@@ -7,7 +7,7 @@ use log::{info, error, warn};
 
 use crate::db;
 use crate::models::SendEmailRequest;
-use crate::gmail::{GmailClient, parse_gmail_message, GmailMessage};
+use crate::gmail::{GmailClient, parse_gmail_message, GmailMessage, process_send_message_response};
 use crate::cache::RedisCache;
 use crate::models::SortField;
 
@@ -29,13 +29,82 @@ pub async fn send_email(
         match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
             Ok(Some((email, _, _, refresh_token))) => {
                 if let Some(refresh_token) = refresh_token {
+                    // Check if encryption is requested
+                    let should_encrypt = email_req.encrypt.unwrap_or(false);
+                    let (subject, body, raw_encrypted_content) = if should_encrypt {
+                        // Get recipient's public key
+                        match crate::encryption::keys::get_public_key(db_pool.get_ref(), &email_req.recipient_email).await {
+                            Ok(Some(public_key)) => {
+                                // Encrypt the message
+                                match crate::encryption::encrypt_message(&email_req.body, &public_key) {
+                                    Ok(encrypted_msg) => {
+                                        // Serialize the encrypted message
+                                        match crate::encryption::serialize_encrypted_message(&encrypted_msg) {
+                                            Ok(content) => {
+                                                let encrypted_subject = crate::encryption::format_encrypted_subject(&email_req.subject);
+                                                let encrypted_body = crate::encryption::format_encrypted_body();
+                                                (encrypted_subject, encrypted_body, Some(content))
+                                            },
+                                            Err(e) => {
+                                                error!("Failed to serialize encrypted message: {}", e);
+                                                return HttpResponse::InternalServerError().json(json!({
+                                                    "success": false,
+                                                    "error": "Failed to encrypt message",
+                                                    "details": format!("{}", e)
+                                                }));
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        error!("Failed to encrypt message: {}", e);
+                                        return HttpResponse::InternalServerError().json(json!({
+                                            "success": false,
+                                            "error": "Failed to encrypt message",
+                                            "details": format!("{}", e)
+                                        }));
+                                    }
+                                }
+                            },
+                            Ok(None) => {
+                                // No public key found for recipient
+                                error!("No public key found for recipient: {}", email_req.recipient_email);
+                                // Generate a key pair for the recipient
+                                match crate::encryption::generate_keypair() {
+                                    Ok(keypair) => {
+                                        // Store the key pair
+                                        if let Err(e) = crate::encryption::keys::store_keypair(db_pool.get_ref(), &email_req.recipient_email, &keypair).await {
+                                            error!("Failed to store key pair: {}", e);
+                                        }
+                                        // Send without encryption this time
+                                        (email_req.subject.clone(), email_req.body.clone(), None)
+                                    },
+                                    Err(e) => {
+                                        error!("Failed to generate key pair: {}", e);
+                                        (email_req.subject.clone(), email_req.body.clone(), None)
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                error!("Failed to get public key: {}", e);
+                                return HttpResponse::InternalServerError().json(json!({
+                                    "success": false,
+                                    "error": "Failed to get recipient's public key",
+                                    "details": format!("{}", e)
+                                }));
+                            }
+                        }
+                    } else {
+                        // No encryption requested
+                        (email_req.subject.clone(), email_req.body.clone(), None)
+                    };
+                    
                     let raw_message = encode_config(
                         format!(
                             "From: {}\r\nTo: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=UTF-8\r\nMIME-Version: 1.0\r\n\r\n{}",
                             email,
                             email_req.recipient_email,
-                            email_req.subject,
-                            email_req.body
+                            subject,
+                            body
                         ),
                         STANDARD
                     );
@@ -44,51 +113,62 @@ pub async fn send_email(
                         Ok(access_token) => {
                             match gmail_client.send_message(&email, &access_token, raw_message).await {
                                 Ok(message) => {
-                                    // Create email object
-                                    let email_obj = crate::models::Email {
-                                        id: Uuid::new_v4().to_string(),
-                                        sender_id: email.clone(),
-                                        sender_email: email.clone(),
-                                        sender_name: None,
-                                        recipient_email: email_req.recipient_email.clone(),
-                                        subject: email_req.subject.clone(),
-                                        body: email_req.body.clone(),
-                                        sent_at: chrono::Utc::now().to_rfc3339(),
-                                        read_at: Some(chrono::Utc::now().to_rfc3339()),
-                                        gmail_id: Some(message.id.clone()),
-                                        label_ids: Some(vec!["SENT".to_string()]),
-                                    };
-
-                                    // Store in database
-                                    let _ = db::store_email(
-                    db_pool.get_ref(),
-                                        &email,
-                                        &email,
-                    &email_req.recipient_email,
-                    &email_req.subject,
-                    &email_req.body,
-                                    ).await;
-
-                                    // Update cache
-                                    if let Err(e) = redis_cache.update_email_lists(&email, &email_obj, true).await {
-                                        error!("Failed to update cache: {}", e);
-                                    }
-
-                                    info!("Email sent and cached: {} -> {}", email, email_req.recipient_email);
+                                    // Create email object using SendMessageResponse processor
+                                    let (subj, sender, sender_name, recipient, msg_body) = 
+                                        process_send_message_response(&message, &email, &email_req.recipient_email, &subject, &body);
                                     
-                        return HttpResponse::Ok().json(json!({
-                            "success": true,
-                                        "email": email_obj,
-                            "message": "Email sent successfully"
-                        }));
-                    }
-                    Err(e) => {
+                                    if !sender.is_empty() && !recipient.is_empty() {
+                                        // Create a database-style email object
+                                        let is_encrypted = subj.contains("[Q-ENCRYPTED]");
+                                        let email_obj = crate::models::Email {
+                                            id: Uuid::new_v4().to_string(),
+                                            sender_id: sender.clone(),
+                                            sender_email: sender,
+                                            sender_name: Some(sender_name),
+                                            recipient_email: recipient,
+                                            subject: subj,
+                                            body: msg_body,
+                                            sent_at: chrono::Utc::now().to_rfc3339(), // Use current time for sent messages
+                                            read_at: None,
+                                            gmail_id: Some(message.id.clone()),
+                                            label_ids: message.label_ids.clone(),
+                                            is_encrypted,
+                                            raw_encrypted_content: None,
+                                        };
+
+                                        // Store in database
+                                        let _ = db::store_email(
+                                            db_pool.get_ref(),
+                                            &email,
+                                            &email,
+                                            &email_req.recipient_email,
+                                            &email_req.subject,
+                                            &email_req.body,
+                                            should_encrypt,
+                                            raw_encrypted_content.as_deref(),
+                                        ).await;
+
+                                        // Update cache
+                                        if let Err(e) = redis_cache.update_email_lists(&email, &email_obj, true).await {
+                                            error!("Failed to update cache: {}", e);
+                                        }
+
+                                        info!("Email sent and cached: {} -> {}", email, email_req.recipient_email);
+                                        
+                                        return HttpResponse::Ok().json(json!({
+                                            "success": true,
+                                            "email": email_obj,
+                                            "message": "Email sent successfully"
+                                        }));
+                                    }
+                                }
+                                Err(e) => {
                                     error!("Gmail API error: {}", e);
-                        return HttpResponse::InternalServerError().json(json!({
-                            "success": false,
-                            "error": "Failed to send email",
-                            "details": format!("{}", e)
-                        }));
+                                    return HttpResponse::InternalServerError().json(json!({
+                                        "success": false,
+                                        "error": "Failed to send email",
+                                        "details": format!("{}", e)
+                                    }));
                                 }
                             }
                         }
@@ -531,6 +611,7 @@ pub async fn get_email(
                                         
                                         if !sender.is_empty() && !recipient.is_empty() {
                                             // Create a database-style email object
+                                            let is_encrypted = subject.contains("[Q-ENCRYPTED]");
                                             let email_obj = crate::models::Email {
                                                 id: Uuid::new_v4().to_string(),
                                                 sender_id: sender.clone(),
@@ -543,6 +624,8 @@ pub async fn get_email(
                                                 read_at: None,
                                                 gmail_id: Some(message.id.clone()),
                                                 label_ids: message.label_ids.clone(),
+                                                is_encrypted,
+                                                raw_encrypted_content: None,
                                             };
                                             
                                             // Cache the email
@@ -679,25 +762,25 @@ pub async fn get_email(
 
 // Helper function to process a Gmail message into our Email model
 fn process_gmail_message(message: &GmailMessage, _user_email: &str) -> Option<crate::models::Email> {
-    let (subject, sender, sender_name, recipient, body) = parse_gmail_message(message);
+    let (subject, from_email, from_name, to_email, body) = parse_gmail_message(message);
     
-    if !sender.is_empty() && !recipient.is_empty() {
-        Some(crate::models::Email {
-            id: Uuid::new_v4().to_string(),
-            sender_id: sender.clone(),
-            sender_email: sender,
-            sender_name: Some(sender_name),
-            recipient_email: recipient,
-            subject,
-            body,
-            sent_at: message.internal_date.clone().unwrap_or_else(|| "".to_string()),
-            read_at: None,
-            gmail_id: Some(message.id.clone()),
-            label_ids: message.label_ids.clone(),
-        })
-    } else {
-        None
-    }
+    let date = message.internal_date.clone().unwrap_or_else(|| "".to_string());
+    
+    Some(crate::models::Email {
+        id: Uuid::new_v4().to_string(),
+        sender_id: from_email.clone(),
+        sender_email: from_email,
+        sender_name: Some(from_name),
+        recipient_email: to_email,
+        subject: subject.clone(),
+        body: body,
+        sent_at: date,
+        read_at: None,
+        gmail_id: Some(message.id.clone()),
+        label_ids: message.label_ids.clone(),
+        is_encrypted: subject.contains("[Q-ENCRYPTED]"),
+        raw_encrypted_content: None,
+    })
 }
 
 // Mark an email as read
@@ -820,4 +903,216 @@ pub async fn mark_email_as_read(
             "error": "Not authenticated"
         }));
     }
+}
+
+// Generate encryption keys for a user
+pub async fn generate_encryption_keys(
+    req: HttpRequest,
+    db_pool: DbPool,
+) -> impl Responder {
+    if let Some(cookie) = req.cookie("session") {
+        let session_token = cookie.value().to_string();
+        
+        match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
+            Ok(Some((email, _, _, _))) => {
+                // Check if user already has keys
+                match crate::encryption::keys::get_keypair(db_pool.get_ref(), &email).await {
+                    Ok(Some(_)) => {
+                        // User already has keys
+                        return HttpResponse::Ok().json(json!({
+                            "success": true,
+                            "message": "Encryption keys already exist"
+                        }));
+                    },
+                    Ok(None) => {
+                        // Generate new key pair
+                        match crate::encryption::generate_keypair() {
+                            Ok(keypair) => {
+                                // Store the key pair
+                                match crate::encryption::keys::store_keypair(db_pool.get_ref(), &email, &keypair).await {
+                                    Ok(_) => {
+                                        info!("Generated and stored encryption keys for user: {}", email);
+                                        return HttpResponse::Ok().json(json!({
+                                            "success": true,
+                                            "message": "Encryption keys generated successfully"
+                                        }));
+                                    },
+                                    Err(e) => {
+                                        error!("Failed to store key pair: {}", e);
+                                        return HttpResponse::InternalServerError().json(json!({
+                                            "success": false,
+                                            "error": "Failed to store encryption keys",
+                                            "details": format!("{}", e)
+                                        }));
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                error!("Failed to generate key pair: {}", e);
+                                return HttpResponse::InternalServerError().json(json!({
+                                    "success": false,
+                                    "error": "Failed to generate encryption keys",
+                                    "details": format!("{}", e)
+                                }));
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        error!("Failed to check for existing keys: {}", e);
+                        return HttpResponse::InternalServerError().json(json!({
+                            "success": false,
+                            "error": "Failed to check for existing keys",
+                            "details": format!("{}", e)
+                        }));
+                    }
+                }
+            },
+            Ok(None) => {
+                error!("Invalid session");
+                return HttpResponse::Unauthorized().json(json!({
+                    "success": false,
+                    "error": "Not authenticated"
+                }));
+            },
+            Err(e) => {
+                error!("Database error: {}", e);
+                return HttpResponse::InternalServerError().json(json!({
+                    "error": "Database error",
+                    "details": format!("{}", e)
+                }));
+            }
+        }
+    }
+    
+    HttpResponse::Unauthorized().json(json!({
+        "success": false,
+        "error": "Not authenticated"
+    }))
+}
+
+// Decrypt an email message
+pub async fn decrypt_email(
+    req: HttpRequest,
+    path: web::Path<String>,
+    db_pool: DbPool,
+) -> impl Responder {
+    let email_id = path.into_inner();
+    
+    if let Some(cookie) = req.cookie("session") {
+        let session_token = cookie.value().to_string();
+        
+        match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
+            Ok(Some((email, _, _, _))) => {
+                // Get the email from the database
+                match db::get_email(db_pool.get_ref(), &email_id).await {
+                    Ok(Some(email_obj)) => {
+                        // Check if the email is encrypted and has raw content
+                        if email_obj.is_encrypted {
+                            if let Some(ref raw_content) = email_obj.raw_encrypted_content {
+                                // Get the user's private key
+                                match crate::encryption::keys::get_keypair(db_pool.get_ref(), &email).await {
+                                    Ok(Some(keypair)) => {
+                                        // Parse the encrypted content
+                                        match crate::encryption::deserialize_encrypted_message(&raw_content) {
+                                            Ok(encrypted_msg) => {
+                                                // Decrypt the message
+                                                match crate::encryption::decrypt_message(&encrypted_msg, &keypair.secret_key) {
+                                                    Ok(decrypted_body) => {
+                                                        // Create a new email object with the decrypted body
+                                                        let decrypted_subject = crate::encryption::extract_original_subject(&email_obj.subject);
+                                                        
+                                                        let mut decrypted_email = email_obj.clone();
+                                                        decrypted_email.subject = decrypted_subject;
+                                                        decrypted_email.body = decrypted_body;
+                                                        
+                                                        return HttpResponse::Ok().json(json!({
+                                                            "success": true,
+                                                            "email": decrypted_email
+                                                        }));
+                                                    },
+                                                    Err(e) => {
+                                                        error!("Failed to decrypt message: {}", e);
+                                                        return HttpResponse::InternalServerError().json(json!({
+                                                            "success": false,
+                                                            "error": "Failed to decrypt message",
+                                                            "details": format!("{}", e)
+                                                        }));
+                                                    }
+                                                }
+                                            },
+                                            Err(e) => {
+                                                error!("Failed to parse encrypted message: {}", e);
+                                                return HttpResponse::InternalServerError().json(json!({
+                                                    "success": false,
+                                                    "error": "Failed to parse encrypted message",
+                                                    "details": format!("{}", e)
+                                                }));
+                                            }
+                                        }
+                                    },
+                                    Ok(None) => {
+                                        error!("No encryption keys found for user: {}", email);
+                                        return HttpResponse::BadRequest().json(json!({
+                                            "success": false,
+                                            "error": "No encryption keys found"
+                                        }));
+                                    },
+                                    Err(e) => {
+                                        error!("Failed to get encryption keys: {}", e);
+                                        return HttpResponse::InternalServerError().json(json!({
+                                            "success": false,
+                                            "error": "Failed to get encryption keys",
+                                            "details": format!("{}", e)
+                                        }));
+                                    }
+                                }
+                            } else {
+                                return HttpResponse::BadRequest().json(json!({
+                                    "success": false,
+                                    "error": "Email is marked as encrypted but has no encrypted content"
+                                }));
+                            }
+                        } else {
+                            return HttpResponse::BadRequest().json(json!({
+                                "success": false,
+                                "error": "Email is not encrypted"
+                            }));
+                        }
+                    },
+                    Ok(None) => {
+                        return HttpResponse::NotFound().json(json!({
+                            "success": false,
+                            "error": "Email not found"
+                        }));
+                    },
+                    Err(e) => {
+                        error!("Database error: {}", e);
+                        return HttpResponse::InternalServerError().json(json!({
+                            "error": "Database error",
+                            "details": format!("{}", e)
+                        }));
+                    }
+                }
+            },
+            Ok(None) => {
+                error!("Invalid session");
+                return HttpResponse::Unauthorized().json(json!({
+                    "success": false,
+                    "error": "Not authenticated"
+                }));
+            },
+            Err(e) => {
+                error!("Database error: {}", e);
+                return HttpResponse::InternalServerError().json(json!({
+                    "error": "Database error",
+                    "details": format!("{}", e)
+                }));
+            }
+        }
+    }
+    
+    HttpResponse::Unauthorized().json(json!({
+        "success": false,
+        "error": "Not authenticated"
+    }))
 } 

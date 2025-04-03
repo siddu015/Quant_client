@@ -17,6 +17,7 @@ mod auth;
 mod handlers;
 mod gmail;
 mod cache;
+mod encryption;
 
 // Main function
 #[actix_web::main]
@@ -87,6 +88,9 @@ async fn main() -> std::io::Result<()> {
             .route("/admin/users", web::get().to(handlers::list_users))
             // Label routes
             .route("/api/labels", web::get().to(handlers::get_labels))
+            // Encryption routes
+            .route("/api/keys/generate", web::post().to(handlers::generate_encryption_keys))
+            .route("/api/emails/{id}/decrypt", web::get().to(handlers::decrypt_email))
     })
         .bind(&bind_address)?
         .run()

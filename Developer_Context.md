@@ -41,6 +41,12 @@ Phase 4:
 
 - Add support for Gmail labels and folders
 - Improved the dashbord UI/UX to meet the professional design
-- *Implement search functionality across emails
-- *Create filters and sorting options
-- *Implement email threading for conversations
+
+Phase 5:
+
+- Implement post-quantum encryption (CRYSTALS-Kyber) for emails
+- Add a switch to enable user to tick to send the message as quantum encrypted
+- Create simple key generation and storage in PostgreSQL
+- Add encryption before sending emails via Gmail API
+- Implement decryption for received encrypted emails
+- Update UI to indicate encrypted/decrypted status of messages

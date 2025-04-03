@@ -21,6 +21,26 @@ pub async fn init(pool: &PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
     
+    // Create the user_keys table for quantum encryption
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_keys (
+            id SERIAL PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            public_key TEXT NOT NULL,
+            private_key TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT fk_user
+                FOREIGN KEY(email) 
+                REFERENCES users(email)
+                ON DELETE CASCADE
+        )
+        "#
+    )
+    .execute(pool)
+    .await?;
+    
     // Initialize email table
     init_email_table(pool).await?;
     

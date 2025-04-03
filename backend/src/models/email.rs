@@ -13,6 +13,8 @@ pub struct Email {
     pub read_at: Option<String>,
     pub gmail_id: Option<String>,
     pub label_ids: Option<Vec<String>>,
+    pub is_encrypted: bool,
+    pub raw_encrypted_content: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -26,6 +28,7 @@ pub struct EmailPreview {
     pub read_at: Option<String>,
     pub gmail_id: Option<String>,
     pub label_ids: Option<Vec<String>>,
+    pub is_encrypted: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -33,6 +36,7 @@ pub struct SendEmailRequest {
     pub recipient_email: String,
     pub subject: String,
     pub body: String,
+    pub encrypt: Option<bool>,
 }
 
 #[derive(Deserialize, Debug, Default)]

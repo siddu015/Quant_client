@@ -14,6 +14,8 @@ export interface Email {
   label_ids?: string[];
   important?: boolean;
   category?: string;
+  is_encrypted?: boolean;
+  raw_encrypted_content?: string;
   attachments?: {
     id: string;
     name: string;
@@ -26,4 +28,5 @@ export interface SendEmailRequest {
   recipient_email: string;
   subject: string;
   body: string;
+  encrypt?: boolean;
 }

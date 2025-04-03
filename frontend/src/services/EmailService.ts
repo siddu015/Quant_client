@@ -120,6 +120,9 @@ const processEmails = (emails: Email[]): Email[] => {
     else if (labelIds.includes(GMAIL_LABELS.CATEGORY_FORUMS)) category = 'Forums';
     else if (labelIds.includes(GMAIL_LABELS.CATEGORY_PROMOTIONS)) category = 'Promotions';
     
+    // Handle encryption status
+    const isEncrypted = email.is_encrypted || false;
+    
     // Enhanced email object with processed label data
     return {
       ...email,
@@ -127,7 +130,8 @@ const processEmails = (emails: Email[]): Email[] => {
       sent_timestamp: sentTimestamp, // Add timestamp for reliable sorting
       read_at: updatedReadAt,
       important,
-      category: category || undefined
+      category: category || undefined,
+      is_encrypted: isEncrypted
     };
   });
 };
