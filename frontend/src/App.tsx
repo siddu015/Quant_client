@@ -1,8 +1,8 @@
 // App.tsx
 import React, { useEffect } from 'react';
 import './App.css';
-import Welcome from './Welcome';
-import Dashboard from './Dashboard';
+import Welcome from './pages/Welcome';
+import Dashboard from './pages/Dashboard';
 import { AuthProvider, useAuth } from './AuthContext';
 
 // Wrapper component to handle routing based on authentication

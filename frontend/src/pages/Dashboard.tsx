@@ -1,130 +1,306 @@
-import React, { useState, useEffect } from 'react';
+// Dashboard.tsx
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '../AuthContext';
+import Inbox from '../components/Inbox';
+import ComposeEmail from '../components/ComposeEmail';
 import { EmailService } from '../services/EmailService';
 
-// Define Email interface to fix TypeScript errors
-interface Email {
-  id: string;
-  subject: string;
-  sender_email?: string;
-  recipient_email?: string;
-  sent_at: string;
-  body?: string;
-}
-
-// Define EmailData interface for better state typing
-interface EmailData {
-  sent: Email[];
-  received: Email[];
-}
-
-const Dashboard = () => {
-  const [emails, setEmails] = useState<EmailData>({ sent: [], received: [] });
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const fetchEmails = async () => {
-    setIsLoading(true);
-    try {
-      const emailData = await EmailService.getEmails();
-      setEmails(emailData);
-    } catch (error) {
-      console.error('Error fetching emails:', error);
-    } finally {
-      setIsLoading(false);
+// Utility function to ensure Google profile URLs are properly formatted
+const formatGoogleProfileUrl = (url: string | null): string | null => {
+    if (!url) return null;
+    
+    // Handle newer Google profile URL format
+    if (url.includes('googleusercontent.com')) {
+        // Use a larger image size (s256-c instead of s96-c)
+        const updatedUrl = url.replace(/=s\d+-c/, "=s256-c");
+        // Double-check that the URL is using HTTPS
+        return updatedUrl.replace(/^http:\/\//, "https://");
     }
-  };
-
-  useEffect(() => {
-    fetchEmails();
-  }, []);
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      await EmailService.refreshEmails();
-      // After cache is refreshed, fetch emails again
-      await fetchEmails();
-    } catch (error) {
-      console.error('Error refreshing emails:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Email Dashboard</h1>
-        <button 
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="ml-4 bg-blue-600 hover:bg-blue-700 text-white py-1 px-3 rounded text-sm flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isRefreshing ? (
-            <>
-              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Refreshing...
-            </>
-          ) : (
-            <>
-              <svg className="mr-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh
-            </>
-          )}
-        </button>
-      </div>
-      
-      {isLoading ? (
-        <div className="flex justify-center items-center h-64">
-          <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Inbox</h2>
-            {emails.received.length > 0 ? (
-              <div className="space-y-4">
-                {emails.received.map((email) => (
-                  <div key={email.id} className="border-b pb-4">
-                    <div className="font-medium">{email.subject}</div>
-                    <div className="text-sm text-gray-600">From: {email.sender_email}</div>
-                    <div className="text-xs text-gray-500">{new Date(email.sent_at).toLocaleString()}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500">No emails received</p>
-            )}
-          </div>
-          
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Sent</h2>
-            {emails.sent.length > 0 ? (
-              <div className="space-y-4">
-                {emails.sent.map((email) => (
-                  <div key={email.id} className="border-b pb-4">
-                    <div className="font-medium">{email.subject}</div>
-                    <div className="text-sm text-gray-600">To: {email.recipient_email}</div>
-                    <div className="text-xs text-gray-500">{new Date(email.sent_at).toLocaleString()}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500">No emails sent</p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    
+    return url;
 };
 
-export default Dashboard; 
+// Profile Image component to handle Google profile images
+interface ProfileImageProps {
+    src: string | null;
+    size?: "small" | "large";
+    alt?: string;
+}
+
+const ProfileImage: React.FC<ProfileImageProps> = ({ src, size = "small", alt = "Profile" }) => {
+    const [imageError, setImageError] = useState(false);
+    
+    // Prepare fallback for when the image fails to load
+    const handleImageError = () => {
+        console.log("Image failed to load:", src);
+        setImageError(true);
+    };
+    
+    // Define size classes
+    const sizeClasses = {
+        small: "w-10 h-10 rounded-xl border-2 border-purple-500/30 shadow-lg",
+        large: "w-20 h-20 rounded-2xl border-2 border-purple-500/30 shadow-lg mb-4"
+    };
+    
+    // Format the image URL to ensure it works correctly
+    const formattedSrc = formatGoogleProfileUrl(src);
+    
+    // If image failed to load or src is null, show fallback
+    if (imageError || !formattedSrc) {
+        return (
+            <div className={sizeClasses[size === "small" ? "small" : "large"]}>
+                <div className="w-full h-full bg-gradient-to-br from-blue-500/20 to-purple-600/20 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className={size === "small" ? "h-5 w-5" : "h-10 w-10"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                </div>
+            </div>
+        );
+    }
+    
+    // For Google profile images, we need to address several issues:
+    // 1. Replace specific size parameters with larger ones
+    // 2. Add proper referrer policy to prevent referrer blocking
+    // 3. Add fallback handling for when images fail to load
+    return (
+        <img 
+            src={formattedSrc} 
+            alt={alt}
+            className={sizeClasses[size === "small" ? "small" : "large"]}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            crossOrigin="anonymous"
+            onError={handleImageError}
+        />
+    );
+};
+
+function Dashboard() {
+    const { isAuthenticated, userEmail, userName, userPicture, isLoading, checkAuthStatus, logout } = useAuth();
+    const [activeSection, setActiveSection] = useState<'inbox' | 'sent' | 'drafts' | 'quantum'>('inbox');
+    const [isComposing, setIsComposing] = useState(false);
+    const [shouldRefresh, setShouldRefresh] = useState(0);
+
+    useEffect(() => {
+        // Check authentication status when component mounts
+        checkAuthStatus();
+    }, [checkAuthStatus]);
+
+    useEffect(() => {
+        // If not loading and not authenticated, redirect to welcome page
+        if (!isLoading && !isAuthenticated) {
+            window.location.href = '/';
+        }
+    }, [isLoading, isAuthenticated]);
+
+    const handleSendEmail = async (email: { recipient: string; subject: string; body: string }) => {
+        try {
+            await EmailService.sendEmail({
+                recipient_email: email.recipient,
+                subject: email.subject,
+                body: email.body
+            });
+            setIsComposing(false);
+            // Trigger a refresh of the emails list
+            setShouldRefresh(prev => prev + 1);
+        } catch (err) {
+            console.error('Error sending email:', err);
+            // You might want to show an error message to the user here
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <div className="bg-[#0a0b0e] min-h-screen flex items-center justify-center">
+                <div className="relative w-16 h-16">
+                    <div className="absolute inset-0 border-4 border-blue-500/30 rounded-full"></div>
+                    <div className="absolute inset-0 border-t-4 border-blue-500 rounded-full animate-spin"></div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!isAuthenticated) {
+        return null; // Will be redirected by the useEffect above
+    }
+
+    return (
+        <div className="relative min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+            {/* Background gradient effects */}
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 to-purple-900/20 pointer-events-none"></div>
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMjEyMTIxIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-5 pointer-events-none"></div>
+            
+            {/* Header */}
+            <header className="relative bg-gray-900/50 backdrop-blur-lg border-b border-gray-800/50 shadow-lg">
+                <div className="container mx-auto px-4 py-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform duration-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                            </div>
+                            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                                Quantum Mail
+                            </h1>
+                        </div>
+                        
+                        <div className="flex items-center space-x-6">
+                            <div className="hidden md:flex items-center space-x-4">
+                                {userPicture && (
+                                    <ProfileImage src={userPicture} size="small" />
+                                )}
+                                <div>
+                                    {userName && (
+                                        <p className="text-sm font-medium text-gray-200">{userName}</p>
+                                    )}
+                                    {userEmail && (
+                                        <p className="text-xs text-gray-400">{userEmail}</p>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <button 
+                                onClick={logout}
+                                className="bg-gray-800/50 hover:bg-gray-700/50 text-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center space-x-2 hover:shadow-lg hover:shadow-purple-500/10"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                </svg>
+                                <span>Logout</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+            
+            {/* Main content */}
+            <main className="container mx-auto px-4 py-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    {/* Sidebar */}
+                    <div className="md:col-span-1">
+                        <div className="bg-gray-900/30 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-gray-800/50">
+                            {/* User info */}
+                            <div className="p-6 border-b border-gray-800/50 flex flex-col items-center">
+                                {userPicture ? (
+                                    <ProfileImage src={userPicture} size="large" />
+                                ) : (
+                                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-600/20 flex items-center justify-center mb-4">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                        </svg>
+                                    </div>
+                                )}
+                                
+                                {userName && (
+                                    <p className="text-lg font-semibold text-gray-200">{userName}</p>
+                                )}
+                                
+                                {userEmail && (
+                                    <p className="text-sm text-gray-400">{userEmail}</p>
+                                )}
+                            </div>
+                            
+                            {/* Navigation */}
+                            <nav className="p-4">
+                                <ul className="space-y-2">
+                                    <li>
+                                        <button
+                                            onClick={() => setActiveSection('inbox')}
+                                            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                                                activeSection === 'inbox'
+                                                    ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                                                    : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                                            </svg>
+                                            Inbox
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button
+                                            onClick={() => setActiveSection('sent')}
+                                            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                                                activeSection === 'sent'
+                                                    ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                                                    : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                            </svg>
+                                            Sent
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button
+                                            onClick={() => setActiveSection('drafts')}
+                                            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                                                activeSection === 'drafts'
+                                                    ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                                                    : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            </svg>
+                                            Drafts
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button
+                                            onClick={() => setActiveSection('quantum')}
+                                            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                                                activeSection === 'quantum'
+                                                    ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                                                    : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
+                                            }`}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                            </svg>
+                                            Quantum Secured
+                                        </button>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                    
+                    {/* Email content */}
+                    <div className="md:col-span-3">
+                        <Inbox mode={activeSection} key={shouldRefresh} />
+                    </div>
+                </div>
+            </main>
+
+            {/* Compose Email Mini-Window - Position at bottom right */}
+            <div className={`fixed right-8 bottom-8 z-50 w-full max-w-md`}>
+                <ComposeEmail 
+                    isOpen={isComposing}
+                    onSend={handleSendEmail} 
+                    onCancel={() => setIsComposing(false)} 
+                />
+            </div>
+
+            {/* Floating compose button - Only show when compose is not open */}
+            {!isComposing && (
+                <button
+                    onClick={() => setIsComposing(true)}
+                    className="fixed right-8 bottom-8 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white p-4 rounded-2xl text-sm font-medium transition-all duration-200 flex items-center shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transform hover:scale-[1.02] group z-50"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-500 ease-linear">
+                        <span className="pl-2">Compose</span>
+                    </span>
+                </button>
+            )}
+        </div>
+    );
+}
+
+export default Dashboard;
