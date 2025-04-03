@@ -1,9 +1,9 @@
 // Inbox.tsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { Email } from '../types/Email';
-import { EmailService } from '../services/EmailService';
+import { Email } from '../../types/Email';
+import { EmailService } from '../../services/EmailService';
 import EmailDetail from './EmailDetail';
-import { useAuth } from '../AuthContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface InboxProps {
   mode: 'inbox' | 'sent' | 'drafts' | 'quantum';

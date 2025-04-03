@@ -1,7 +1,7 @@
 // EmailDetail.tsx
 import React, { useState } from 'react';
-import { Email } from '../types/Email';
-import { useAuth } from '../AuthContext';
+import { Email } from '../../types/Email';
+import { useAuth } from '../../context/AuthContext';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';

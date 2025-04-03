@@ -1,6 +1,6 @@
 // EmailListItem.tsx
 import React from 'react';
-import { Email } from '../types/Email';
+import { Email } from '../../types/Email';
 
 interface EmailListItemProps {
   email: Email;
