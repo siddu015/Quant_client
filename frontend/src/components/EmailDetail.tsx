@@ -2,11 +2,156 @@
 import React, { useState } from 'react';
 import { Email } from '../types/Email';
 import { useAuth } from '../AuthContext';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
+import remarkGfm from 'remark-gfm';
 
 interface EmailDetailProps {
   email: Email;
   onBack: () => void;
 }
+
+const preprocessMarkdown = (content: string): string => {
+  if (!content) return '';
+  
+  // Split content into lines for easier processing
+  const lines = content.split('\n');
+  const processedLines = [];
+  
+  // Process each line
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    
+    // Fix headers without space after # (e.g., ###Title -> ### Title)
+    if (/^#{1,6}[^#\s]/.test(line)) {
+      line = line.replace(/^(#{1,6})([^#\s])/, '$1 $2');
+    }
+    
+    // Special marketing email fix: Handle inline headers like "###Build. Preview. Deploy."
+    if (line.match(/###[A-Za-z0-9]/) || line.match(/##[A-Za-z0-9]/)) {
+      line = line.replace(/(###|##)([A-Za-z0-9])/, "$1 $2");
+    }
+    
+    // Fix headers that might appear in the middle of a line (common in marketing emails)
+    if (line.includes('###') && !line.startsWith('#')) {
+      // If ### appears in the middle of text, ensure it has proper spacing or move to new line
+      line = line.replace(/([^#\s])(###)([^#\s])/, "$1\n\n### $3");
+    }
+    
+    // Fix bullet points without proper spacing
+    if (/^(\s*)-[^\s]/.test(line)) {
+      line = line.replace(/^(\s*)-([^\s])/, '$1- $2');
+    }
+    
+    // Fix numbered lists without proper spacing
+    if (/^(\s*)\d+\.[^\s]/.test(line)) {
+      line = line.replace(/^(\s*\d+\.)([^\s])/, '$1 $2');
+    }
+    
+    // Add line to processed lines
+    processedLines.push(line);
+  }
+  
+  // Rejoin lines
+  let processedContent = processedLines.join('\n');
+  
+  // Add debug info to help track issues (for development only - remove in production)
+  // console.log('Processed content:', processedContent);
+  
+  return processedContent
+    // Additional fixes for common email marketing formatting issues
+    
+    // Replace multiple consecutive newlines with just two newlines
+    .replace(/\n{3,}/g, '\n\n')
+    
+    // Fix markdown links if needed
+    .replace(/\[(.*?)\]\s*\((.*?)\)/g, '[$1]($2)')
+    
+    // Replace plain "---" with proper horizontal rule
+    .replace(/^---$/gm, '\n---\n')
+    
+    // Fix any underlined headers (e.g., Title\n===== -> # Title)
+    .replace(/^(.+)\n={3,}$/gm, '# $1')
+    .replace(/^(.+)\n-{3,}$/gm, '## $1')
+    
+    // Make sure all headers have proper spacing and are on their own line
+    .replace(/^(#{1,6}\s)(.*?)$/gm, '\n$1$2\n')
+    
+    // Enhance bullet lists with better spacing
+    .replace(/^(\s*[*-]\s+)(.*?)$/gm, '\n$1$2\n')
+    
+    // Make sure all newlines are handled correctly for markdown
+    .replace(/\n/g, '  \n');
+};
+
+// Improve marketing email detection
+const isMarketingEmail = (subject: string, body: string): boolean => {
+  if (!subject || !body) return false;
+  
+  // Common patterns in marketing emails
+  const marketingSubjectPatterns = [
+    /newsletter/i, 
+    /update/i, 
+    /news/i, 
+    /announcement/i, 
+    /introducing/i,
+    /new feature/i,
+    /launch/i,
+    /release/i,
+    /offer/i,
+    /sale/i,
+    /discount/i,
+    /promo/i,
+    /deal/i,
+    /special/i,
+    /invite/i,
+    /welcome/i,
+    /preview/i,
+    /coming soon/i,
+    /^re:/i // Often marketing emails have "Re:" prefix even for first contact
+  ];
+  
+  // Check if the subject contains marketing keywords
+  const hasMarketingSubject = marketingSubjectPatterns.some(pattern => pattern.test(subject));
+  
+  // Additional body pattern checks
+  const marketingBodyPatterns = [
+    /<table/i,                       // HTML tables (common in marketing emails)
+    /###(?:[^#]|$)/,                 // ### headers 
+    /##(?:[^#]|$)/,                  // ## headers
+    /view in browser/i,              // Common marketing email phrases
+    /view email in browser/i,
+    /unsubscribe/i,
+    /opt[ -]out/i,
+    /privacy policy/i,
+    /terms of service/i,
+    /preferences/i,
+    /update preferences/i,
+    /https?:\/\/[^\s"]+\.(gif|png|jpg|jpeg|webp)/i,  // Image links
+    /\[product update\]/i,
+    /\[update\]/i,
+    /<img[^>]+src=/i,                // HTML images
+    /style=['"][^'"]*background[^'"]*['"]/, // CSS backgrounds
+    /style=['"][^'"]*color[^'"]*['"]/, // CSS colors
+    /style=['"][^'"]*font[^'"]*['"]/, // CSS fonts
+    /\*\|[A-Z_]+\|\*/,               // Mailchimp-style merge tags
+    /<%[^%]+%>/,                     // Email template variables
+    /\{\{[^}]+\}\}/                  // Handlebars-style template variables
+  ];
+  
+  // Check if the body contains marketing patterns
+  const hasMarketingBody = marketingBodyPatterns.some(pattern => pattern.test(body));
+  
+  // Layout-based detection (common in marketing emails)
+  const hasMarketingLayout = 
+    body.includes('--') ||                       // Separator lines
+    (body.match(/\n/g) || []).length > 15 ||     // Many line breaks
+    (body.match(/http/g) || []).length > 2 ||    // Multiple links
+    body.length > 1000;                         // Long body
+  
+  return hasMarketingSubject || hasMarketingBody || hasMarketingLayout;
+};
 
 const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
   const { userEmail } = useAuth();
@@ -233,9 +378,106 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
                 <p>Click the button above to decrypt the message.</p>
               </div>
             </div>
+          ) : isMarketingEmail(displayEmail.subject, displayEmail.body) ? (
+            // Marketing email specialized rendering with enhanced formatting
+            <div className="bg-gray-800/20 rounded-xl p-6">
+              <div className="email-content newsletter-content text-gray-300">
+                {displayEmail.body.startsWith('<html') || displayEmail.body.includes('<div') || displayEmail.body.includes('<table') ? (
+                  // For HTML marketing emails
+                  <div 
+                    className="html-email marketing-email" 
+                    dangerouslySetInnerHTML={{ 
+                      __html: displayEmail.body 
+                    }} 
+                  />
+                ) : (
+                  // For markdown marketing emails
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeRaw, rehypeSanitize]}
+                    components={{
+                      // Custom components with enhanced styling for marketing emails
+                      h1: ({node, ...props}: any) => <h1 className="text-2xl font-bold text-blue-300 my-6 pb-2 border-b border-blue-800/30" {...props} />,
+                      h2: ({node, ...props}: any) => <h2 className="text-xl font-bold text-blue-300 my-5 pb-1 border-b border-blue-800/30" {...props} />,
+                      h3: ({node, ...props}: any) => <h3 className="text-lg font-bold text-blue-300 my-4" {...props} />,
+                      h4: ({node, ...props}: any) => <h4 className="text-base font-semibold text-blue-300 my-3" {...props} />,
+                      p: ({node, ...props}: any) => <p className="my-3 text-gray-300 leading-relaxed" {...props} />,
+                      a: ({node, href, ...props}: any) => {
+                        if (href && href.startsWith('mailto:')) {
+                          return <a className="text-blue-400 hover:text-blue-300 font-medium" href={href} {...props} />;
+                        }
+                        return <a className="text-blue-400 hover:text-blue-300 font-medium" href={href} target="_blank" rel="noopener noreferrer" {...props} />;
+                      },
+                      ul: ({node, ...props}: any) => <ul className="my-4 pl-6 space-y-2" {...props} />,
+                      ol: ({node, ...props}: any) => <ol className="my-4 pl-6 space-y-2 list-decimal" {...props} />,
+                      li: ({node, ...props}: any) => <li className="pl-1 text-gray-300" {...props} />,
+                      hr: ({node, ...props}: any) => <hr className="my-6 border-blue-800/30" {...props} />,
+                      img: ({node, ...props}: any) => <img className="max-w-full h-auto rounded my-6 shadow-lg" {...props} />
+                    }}
+                  >
+                    {preprocessMarkdown(displayEmail.body)}
+                  </ReactMarkdown>
+                )}
+              </div>
+            </div>
           ) : (
-            <div className="bg-gray-800/20 rounded-xl p-6 text-gray-300 whitespace-pre-wrap">
-              {displayEmail.body}
+            <div className="bg-gray-800/20 rounded-xl p-6">
+              <div className="email-content text-gray-300">
+                {displayEmail.body.startsWith('<html') || displayEmail.body.includes('<div') || displayEmail.body.includes('<table') ? (
+                  // For HTML emails, use dangerouslySetInnerHTML with caution 
+                  // This is already sanitized by rehype-sanitize in React-Markdown
+                  <div 
+                    className="html-email" 
+                    dangerouslySetInnerHTML={{ 
+                      __html: displayEmail.body 
+                    }} 
+                  />
+                ) : (
+                  // For markdown and plain text emails
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeRaw, rehypeSanitize]}
+                    components={{
+                      // Custom components for rendering markdown elements
+                      h1: ({node, ...props}: any) => <h1 className="text-xl font-bold text-gray-200 my-4" {...props} />,
+                      h2: ({node, ...props}: any) => <h2 className="text-lg font-bold text-gray-200 my-3" {...props} />,
+                      h3: ({node, ...props}: any) => <h3 className="text-base font-bold text-gray-200 my-3" {...props} />,
+                      h4: ({node, ...props}: any) => <h4 className="text-base font-semibold text-gray-200 my-2" {...props} />,
+                      h5: ({node, ...props}: any) => <h5 className="text-sm font-semibold text-gray-200 my-2" {...props} />,
+                      h6: ({node, ...props}: any) => <h6 className="text-sm font-semibold text-gray-200 my-2" {...props} />,
+                      p: ({node, ...props}: any) => <p className="my-2 text-gray-300" {...props} />,
+                      a: ({node, href, ...props}: any) => {
+                        // Handle mailto links
+                        if (href && href.startsWith('mailto:')) {
+                          return <a className="text-blue-400 hover:text-blue-300 underline" href={href} {...props} />;
+                        }
+                        // Handle normal links - open in new tab
+                        return <a className="text-blue-400 hover:text-blue-300 underline" href={href} target="_blank" rel="noopener noreferrer" {...props} />;
+                      },
+                      ul: ({node, ...props}: any) => <ul className="list-disc pl-5 my-2" {...props} />,
+                      ol: ({node, ...props}: any) => <ol className="list-decimal pl-5 my-2" {...props} />,
+                      li: ({node, ...props}: any) => <li className="my-1" {...props} />,
+                      blockquote: ({node, ...props}: any) => <blockquote className="border-l-4 border-gray-600 pl-4 italic my-4 text-gray-400" {...props} />,
+                      code: ({node, inline, className, children, ...props}: any) => 
+                        inline 
+                          ? <code className="bg-gray-700/50 px-1 rounded text-blue-300" {...props}>{children}</code>
+                          : <code className="block bg-gray-700/50 p-3 rounded my-4 text-blue-300 overflow-x-auto" {...props}>{children}</code>,
+                      pre: ({node, ...props}: any) => <pre className="bg-gray-700/50 p-4 rounded-lg my-4 overflow-x-auto" {...props} />,
+                      hr: ({node, ...props}: any) => <hr className="my-6 border-gray-700" {...props} />,
+                      table: ({node, ...props}: any) => <table className="min-w-full divide-y divide-gray-700 my-4" {...props} />,
+                      thead: ({node, ...props}: any) => <thead className="bg-gray-700/30" {...props} />,
+                      tbody: ({node, ...props}: any) => <tbody className="divide-y divide-gray-700" {...props} />,
+                      tr: ({node, ...props}: any) => <tr className="hover:bg-gray-700/30" {...props} />,
+                      th: ({node, ...props}: any) => <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" {...props} />,
+                      td: ({node, ...props}: any) => <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300" {...props} />,
+                      img: ({node, ...props}: any) => <img className="max-w-full h-auto rounded my-4" {...props} />
+                    }}
+                  >
+                    {/* Process the email content to fix markdown formatting issues */}
+                    {preprocessMarkdown(displayEmail.body)}
+                  </ReactMarkdown>
+                )}
+              </div>
             </div>
           )}
         </div>

@@ -1,3 +1,239 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Add these styles for email content rendering */
+.email-content {
+  /* Base text styles */
+  color: #d1d5db; /* text-gray-300 */
+  line-height: 1.6;
+  font-size: 1rem;
+}
+
+.email-content h1,
+.email-content h2,
+.email-content h3,
+.email-content h4,
+.email-content h5,
+.email-content h6 {
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  color: #e5e7eb; /* text-gray-200 */
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+  border-bottom: 1px solid rgba(75, 85, 99, 0.3); /* subtle border for headers */
+  padding-bottom: 0.5rem;
+}
+
+.email-content h1 { 
+  font-size: 1.75rem; 
+  color: #93c5fd; /* text-blue-300 */
+  margin-top: 2rem;
+}
+
+.email-content h2 { 
+  font-size: 1.5rem; 
+  color: #93c5fd; /* text-blue-300 */
+}
+
+.email-content h3 { 
+  font-size: 1.25rem; 
+  color: #60a5fa; /* text-blue-400 */
+}
+
+.email-content h4 { 
+  font-size: 1.1rem; 
+  color: #60a5fa; /* text-blue-400 */
+}
+
+.email-content h5, .email-content h6 { 
+  font-size: 1rem; 
+  color: #93c5fd; /* text-blue-300 */
+}
+
+.email-content p {
+  margin-bottom: 1rem;
+}
+
+.email-content hr {
+  margin: 1.5rem 0;
+  border-color: #4b5563; /* border-gray-600 */
+}
+
+.email-content a:not([class]) {
+  color: #93c5fd; /* text-blue-300 */
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px dotted #60a5fa;
+  transition: all 0.2s ease;
+}
+
+.email-content a:not([class]):hover {
+  color: #bfdbfe; /* text-blue-200 */
+  border-bottom: 1px solid #bfdbfe;
+}
+
+.email-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  margin: 1rem 0;
+}
+
+.email-content ul:not([class]) {
+  list-style-type: none;
+  padding-left: 1.5rem;
+}
+
+.email-content ul:not([class]) li {
+  position: relative;
+  margin-bottom: 0.75rem;
+  line-height: 1.5;
+}
+
+.email-content ul:not([class]) li::before {
+  content: "•";
+  position: absolute;
+  left: -1.25rem;
+  color: #60a5fa; /* text-blue-400 */
+  font-weight: bold;
+}
+
+.email-content blockquote {
+  border-left: 4px solid #4b5563; /* border-gray-600 */
+  padding-left: 1rem;
+  margin: 1rem 0;
+  font-style: italic;
+  color: #9ca3af; /* text-gray-400 */
+}
+
+.email-content table {
+  width: 100%;
+  margin: 1rem 0;
+  border-collapse: collapse;
+}
+
+.email-content th {
+  background-color: rgba(55, 65, 81, 0.3); /* bg-gray-700/30 */
+  color: #d1d5db; /* text-gray-300 */
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.email-content td {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid #374151; /* border-gray-700 */
+  font-size: 0.875rem;
+}
+
+.email-content tr:hover {
+  background-color: rgba(55, 65, 81, 0.3); /* bg-gray-700/30 */
+}
+
+.email-content code {
+  font-family: monospace;
+  background-color: rgba(55, 65, 81, 0.5); /* bg-gray-700/50 */
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  color: #93c5fd; /* text-blue-300 */
+}
+
+.email-content pre {
+  background-color: rgba(55, 65, 81, 0.5); /* bg-gray-700/50 */
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.email-content pre code {
+  background-color: transparent;
+  padding: 0;
+  color: #93c5fd; /* text-blue-300 */
+  display: block;
+}
+
+/* HTML email specific styles to ensure dark theme compatibility */
+.html-email {
+  color: #d1d5db; /* text-gray-300 */
+  line-height: 1.6;
+  font-size: 1rem;
+}
+
+.html-email a {
+  color: #60a5fa !important; /* text-blue-400 */
+  text-decoration: underline !important;
+}
+
+.html-email a:hover {
+  color: #93c5fd !important; /* text-blue-300 */
+}
+
+.html-email p, 
+.html-email div, 
+.html-email span, 
+.html-email li, 
+.html-email td {
+  color: #d1d5db !important; /* text-gray-300 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+.html-email h1, 
+.html-email h2, 
+.html-email h3, 
+.html-email h4, 
+.html-email h5, 
+.html-email h6 {
+  color: #e5e7eb !important; /* text-gray-200 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+.html-email table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.html-email table td, 
+.html-email table th {
+  border: 1px solid #4b5563; /* border-gray-600 */
+  padding: 8px;
+}
+
+.html-email img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Override common inline styles from HTML emails */
+.html-email [style*="color"] {
+  color: inherit !important;
+}
+
+.html-email [style*="background-color: white"],
+.html-email [style*="background-color: #fff"],
+.html-email [style*="background-color: #ffffff"],
+.html-email [style*="background: white"],
+.html-email [style*="background: #fff"],
+.html-email [style*="background: #ffffff"] {
+  background-color: transparent !important;
+}
+
+.html-email [style*="font-family"] {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+/* Add spacing for content sections */
+.email-content p + h1,
+.email-content p + h2,
+.email-content p + h3,
+.email-content p + h4,
+.email-content ul + h1,
+.email-content ul + h2,
+.email-content ul + h3,
+.email-content ul + h4 {
+  margin-top: 2rem;
+}

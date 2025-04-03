@@ -44,6 +44,28 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onSelect }) => {
     }
   };
 
+  // Add a helper function to strip HTML tags and create a clean preview text
+  const createPreviewText = (body: string): string => {
+    // First check if it's an HTML email
+    if (body.startsWith('<html') || body.includes('<div') || body.includes('<table')) {
+      // Remove HTML tags and decode HTML entities
+      const div = document.createElement('div');
+      div.innerHTML = body;
+      const text = div.textContent || div.innerText || '';
+      return text.trim().substring(0, 100) + (text.length > 100 ? '...' : '');
+    }
+    
+    // Remove markdown symbols
+    return body
+      .replace(/#{1,6}\s/g, '') // Remove header marks
+      .replace(/\*\*/g, '')     // Remove bold marks
+      .replace(/\*/g, '')       // Remove italic marks
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Replace links with just the text
+      .replace(/```[\s\S]*?```/g, '[Code Block]') // Replace code blocks
+      .replace(/`([^`]+)`/g, '$1') // Replace inline code
+      .substring(0, 100) + (body.length > 100 ? '...' : '');
+  };
+
   return (
     <div 
       className={`flex flex-col p-4 border-b border-gray-700/50 hover:bg-gray-800/30 cursor-pointer transition-colors duration-200 ${isUnread ? 'bg-gray-800/80' : ''}`}
@@ -77,7 +99,7 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onSelect }) => {
       <div className="text-xs text-gray-500 mt-1 line-clamp-1">
         {email.is_encrypted 
           ? "This message is encrypted with quantum-resistant encryption."
-          : `${email.body.substring(0, 100)}${email.body.length > 100 ? '...' : ''}`
+          : createPreviewText(email.body)
         }
       </div>
       
