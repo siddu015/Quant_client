@@ -14,11 +14,29 @@ pub async fn get_user_info(req: HttpRequest, db_pool: DbPool) -> impl Responder 
         match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
             Ok(Some((email, name, picture, _refresh_token))) => {
                 println!("User authenticated: {}", email);
+                
+                // Process the picture URL to ensure it's valid
+                let processed_picture = picture.as_ref().map(|pic_url| {
+                    // Ensure it's using HTTPS
+                    let https_url = if pic_url.starts_with("http://") {
+                        pic_url.replace("http://", "https://")
+                    } else {
+                        pic_url.clone()
+                    };
+                    
+                    // Ensure the image size is adequate
+                    if https_url.contains("=s") {
+                        https_url.replace("=s96-c", "=s256-c")
+                    } else {
+                        https_url
+                    }
+                });
+                
                 return HttpResponse::Ok().json(UserResponse {
                     authenticated: true,
                     email: Some(email),
                     name,
-                    picture,
+                    picture: processed_picture,
                     message: None,
                 });
             }

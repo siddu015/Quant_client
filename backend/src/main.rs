@@ -42,7 +42,11 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Failed to create pool");
     
+    // Initialize database tables
     db::init(&pool).await.expect("Failed to initialize database");
+    
+    // Run migrations
+    db::migrate_profile_pictures(&pool).await.expect("Failed to migrate profile pictures");
     
     // Create Gmail client
     let gmail_client = gmail::create_gmail_client();

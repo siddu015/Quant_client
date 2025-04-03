@@ -5,6 +5,76 @@ import Inbox from './components/Inbox';
 import ComposeEmail from './components/ComposeEmail';
 import { EmailService } from './services/EmailService';
 
+// Utility function to ensure Google profile URLs are properly formatted
+const formatGoogleProfileUrl = (url: string | null): string | null => {
+    if (!url) return null;
+    
+    // Handle newer Google profile URL format
+    if (url.includes('googleusercontent.com')) {
+        // Use a larger image size (s256-c instead of s96-c)
+        const updatedUrl = url.replace(/=s\d+-c/, "=s256-c");
+        // Double-check that the URL is using HTTPS
+        return updatedUrl.replace(/^http:\/\//, "https://");
+    }
+    
+    return url;
+};
+
+// Profile Image component to handle Google profile images
+interface ProfileImageProps {
+    src: string | null;
+    size?: "small" | "large";
+    alt?: string;
+}
+
+const ProfileImage: React.FC<ProfileImageProps> = ({ src, size = "small", alt = "Profile" }) => {
+    const [imageError, setImageError] = useState(false);
+    
+    // Prepare fallback for when the image fails to load
+    const handleImageError = () => {
+        console.log("Image failed to load:", src);
+        setImageError(true);
+    };
+    
+    // Define size classes
+    const sizeClasses = {
+        small: "w-10 h-10 rounded-xl border-2 border-purple-500/30 shadow-lg",
+        large: "w-20 h-20 rounded-2xl border-2 border-purple-500/30 shadow-lg mb-4"
+    };
+    
+    // Format the image URL to ensure it works correctly
+    const formattedSrc = formatGoogleProfileUrl(src);
+    
+    // If image failed to load or src is null, show fallback
+    if (imageError || !formattedSrc) {
+        return (
+            <div className={sizeClasses[size === "small" ? "small" : "large"]}>
+                <div className="w-full h-full bg-gradient-to-br from-blue-500/20 to-purple-600/20 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className={size === "small" ? "h-5 w-5" : "h-10 w-10"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                </div>
+            </div>
+        );
+    }
+    
+    // For Google profile images, we need to address several issues:
+    // 1. Replace specific size parameters with larger ones
+    // 2. Add proper referrer policy to prevent referrer blocking
+    // 3. Add fallback handling for when images fail to load
+    return (
+        <img 
+            src={formattedSrc} 
+            alt={alt}
+            className={sizeClasses[size === "small" ? "small" : "large"]}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            crossOrigin="anonymous"
+            onError={handleImageError}
+        />
+    );
+};
+
 function Dashboard() {
     const { isAuthenticated, userEmail, userName, userPicture, isLoading, checkAuthStatus, logout } = useAuth();
     const [activeSection, setActiveSection] = useState<'inbox' | 'sent' | 'drafts' | 'quantum'>('inbox');
@@ -78,11 +148,7 @@ function Dashboard() {
                         <div className="flex items-center space-x-6">
                             <div className="hidden md:flex items-center space-x-4">
                                 {userPicture && (
-                                    <img 
-                                        src={userPicture} 
-                                        alt="Profile" 
-                                        className="w-10 h-10 rounded-xl border-2 border-purple-500/30 shadow-lg"
-                                    />
+                                    <ProfileImage src={userPicture} size="small" />
                                 )}
                                 <div>
                                     {userName && (
@@ -117,11 +183,7 @@ function Dashboard() {
                             {/* User info */}
                             <div className="p-6 border-b border-gray-800/50 flex flex-col items-center">
                                 {userPicture ? (
-                                    <img 
-                                        src={userPicture} 
-                                        alt="Profile" 
-                                        className="w-20 h-20 rounded-2xl border-2 border-purple-500/30 shadow-lg mb-4"
-                                    />
+                                    <ProfileImage src={userPicture} size="large" />
                                 ) : (
                                     <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-600/20 flex items-center justify-center mb-4">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

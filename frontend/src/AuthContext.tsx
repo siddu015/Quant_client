@@ -1,6 +1,23 @@
 // AuthContext.tsx
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 
+// Helper function for Google profile URLs
+const sanitizeProfilePicture = (url: string | null): string | null => {
+  if (!url) return null;
+  
+  // Ensure HTTPS protocol
+  let sanitized = url.startsWith('http://') 
+    ? url.replace('http://', 'https://') 
+    : url;
+  
+  // Update Google image size parameters
+  if (sanitized.includes('googleusercontent.com') && sanitized.includes('=s')) {
+    sanitized = sanitized.replace(/=s\d+-c/, '=s256-c');
+  }
+  
+  return sanitized;
+};
+
 interface UserResponse {
   authenticated: boolean;
   email: string | null;
@@ -54,7 +71,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsAuthenticated(data.authenticated);
         setUserEmail(data.email);
         setUserName(data.name);
-        setUserPicture(data.picture);
+        setUserPicture(sanitizeProfilePicture(data.picture));
 
         if (data.authenticated) {
           console.log('User is authenticated:', data.email);

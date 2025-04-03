@@ -78,6 +78,22 @@ pub async fn auth_google_callback(
                                 // Add the refresh token to the user info
                                 user_info.refresh_token = refresh_token.clone();
                                 
+                                // Fix profile picture URL - ensure it's using HTTPS
+                                if let Some(ref pic_url) = user_info.picture {
+                                    if pic_url.starts_with("http://") {
+                                        user_info.picture = Some(pic_url.replace("http://", "https://"));
+                                    }
+                                    
+                                    // Ensure the picture URL doesn't have size restrictions that are too small
+                                    // Google sometimes returns a small sized image by default
+                                    if let Some(ref mut pic_url) = user_info.picture {
+                                        if pic_url.contains("=s") {
+                                            // Replace the size parameter with a larger one (s256-c instead of s96-c)
+                                            *pic_url = pic_url.replace("=s96-c", "=s256-c");
+                                        }
+                                    }
+                                }
+                                
                                 // Generate a session token
                                 let session_token = uuid::Uuid::new_v4().to_string();
                                 
