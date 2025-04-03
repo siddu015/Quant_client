@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import './App.css';
 import Welcome from './pages/Welcome';
 import Dashboard from './pages/Dashboard';
-import { AuthProvider, useAuth } from './context';
+import { AuthProvider, useAuth } from './context/AuthContext';
 
 // Wrapper component to handle routing based on authentication
 const AppRouter = () => {
