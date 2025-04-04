@@ -1,6 +1,6 @@
 // Dashboard.tsx
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext'
 import { Inbox, ComposeEmail } from '../components/email';
 import { EmailService } from '../services/EmailService';
 import { Header, Sidebar } from '../components/layout';
