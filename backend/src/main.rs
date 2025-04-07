@@ -74,24 +74,31 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(gmail_client.clone()))
             .app_data(web::Data::new(redis_cache.clone()))
             .wrap(cors)
+
             // Base routes
             .route("/", web::get().to(handlers::welcome))
+
             // Auth routes
             .route("/auth/google", web::get().to(handlers::auth_google))
             .route("/auth/google/callback", web::get().to(handlers::auth_google_callback))
             .route("/api/user", web::get().to(handlers::get_user_info))
             .route("/api/logout", web::post().to(handlers::logout))
+
             // Email routes
             .route("/api/emails", web::get().to(handlers::get_emails))
             .route("/api/emails", web::post().to(handlers::send_email))
             .route("/api/emails/{id}", web::get().to(handlers::get_email))
             .route("/api/emails/{id}/read", web::post().to(handlers::mark_email_as_read))
+
             // Cache control routes
             .route("/api/emails/refresh", web::post().to(handlers::refresh_emails))
+
             // Admin routes
             .route("/admin/users", web::get().to(handlers::list_users))
+
             // Label routes
             .route("/api/labels", web::get().to(handlers::get_labels))
+            
             // Encryption routes
             .route("/api/keys/generate", web::post().to(handlers::generate_encryption_keys))
             .route("/api/emails/{id}/decrypt", web::get().to(handlers::decrypt_email))
