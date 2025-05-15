@@ -1,123 +1,149 @@
 // EmailListItem.tsx
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import { Email } from '../../types/Email';
 
 interface EmailListItemProps {
   email: Email;
-  onSelect: (email: Email) => void;
+  onClick: () => void;
 }
 
-const EmailListItem: React.FC<EmailListItemProps> = ({ email, onSelect }) => {
-  // Helper function to format date
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  // Determine if email is unread
-  const isUnread = !email.read_at;
-  
-  // Get sender display name (use name if available, otherwise email)
-  const senderDisplay = email.sender_name || email.sender_email;
-  
-  // Format timestamp
-  const formattedDate = formatDate(email.sent_at);
-  
-  // Check if email has labels
-  const hasLabels = email.label_ids && email.label_ids.length > 0;
-  
-  // Get label colors based on system labels
-  const getLabelColor = (labelId: string) => {
-    switch(labelId) {
-      case 'INBOX': return 'bg-blue-500';
-      case 'SENT': return 'bg-green-500';
-      case 'IMPORTANT': return 'bg-yellow-500';
-      case 'TRASH': return 'bg-red-500';
-      case 'DRAFT': return 'bg-orange-500';
-      case 'SPAM': return 'bg-purple-500';
-      case 'STARRED': return 'bg-yellow-400';
-      default:
-        // For custom labels or categories
-        if (labelId.startsWith('CATEGORY_')) return 'bg-indigo-500';
-        return 'bg-gray-500';
+const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
+  // Memoize the formatted date to avoid recalculation on each render
+  const formattedDate = useMemo(() => {
+    try {
+      const date = new Date(email.sent_at);
+      
+      // Check if timestamp is valid
+      if (isNaN(date.getTime())) {
+        return 'Unknown date';
+      }
+      
+      // Format date based on how recent it is
+      const now = new Date();
+      const isCurrentYear = date.getFullYear() === now.getFullYear();
+      const isSameDay = date.toDateString() === now.toDateString();
+      
+      // If same day, show just the time
+      if (isSameDay) {
+        return date.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        });
+      }
+      
+      // If same year but not same day
+      if (isCurrentYear) {
+        return date.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric'
+        });
+      }
+      
+      // Different year
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric'
+      });
+    } catch (e) {
+      console.error('Error formatting date:', e);
+      return 'Unknown date';
     }
-  };
+  }, [email.sent_at]);
 
-  // Add a helper function to strip HTML tags and create a clean preview text
-  const createPreviewText = (body: string): string => {
-    // First check if it's an HTML email
-    if (body.startsWith('<html') || body.includes('<div') || body.includes('<table')) {
-      // Remove HTML tags and decode HTML entities
-      const div = document.createElement('div');
-      div.innerHTML = body;
-      const text = div.textContent || div.innerText || '';
-      return text.trim().substring(0, 100) + (text.length > 100 ? '...' : '');
+  // Determine sender or recipient display name
+  const displayName = useMemo(() => {
+    if (email.sender_name && email.sender_email !== email.recipient_email) {
+      return email.sender_name;
+    }
+    return email.sender_email;
+  }, [email.sender_name, email.sender_email, email.recipient_email]);
+
+  // Generate a color based on the name for avatar background
+  const getAvatarColor = (name: string) => {
+    const colors = [
+      'bg-blue-600', 'bg-purple-600', 'bg-green-600', 
+      'bg-pink-600', 'bg-indigo-600', 'bg-yellow-600', 
+      'bg-red-600', 'bg-cyan-600'
+    ];
+    
+    // Simple hash function to determine color
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
     }
     
-    // Remove markdown symbols
-    return body
-      .replace(/#{1,6}\s/g, '') // Remove header marks
-      .replace(/\*\*/g, '')     // Remove bold marks
-      .replace(/\*/g, '')       // Remove italic marks
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Replace links with just the text
-      .replace(/```[\s\S]*?```/g, '[Code Block]') // Replace code blocks
-      .replace(/`([^`]+)`/g, '$1') // Replace inline code
-      .substring(0, 100) + (body.length > 100 ? '...' : '');
+    return colors[Math.abs(hash) % colors.length];
   };
+
+  // Check if email is encrypted
+  const isEncrypted = email.is_encrypted || email.subject.includes("[Q-ENCRYPTED]");
 
   return (
     <div 
-      className={`flex flex-col p-4 border-b border-gray-700/50 hover:bg-gray-800/30 cursor-pointer transition-colors duration-200 ${isUnread ? 'bg-gray-800/80' : ''}`}
-      onClick={() => onSelect(email)}
+      onClick={onClick}
+      className={`p-4 border-b border-gray-700/30 transition-all duration-150 ${
+        !email.read_at 
+          ? 'bg-gray-800/40 hover:bg-gray-700/60' 
+          : 'bg-gray-900/40 hover:bg-gray-800/60'
+      }`}
     >
-      <div className="flex justify-between items-start mb-1">
-        <div className={`text-sm font-medium ${isUnread ? 'text-white' : 'text-gray-300'} flex items-center`}>
-          {senderDisplay}
-          {email.is_encrypted && (
-            <span className="ml-2 inline-flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
+      <div className="flex items-center gap-4">
+        <div className={`flex-shrink-0 w-10 h-10 rounded-full ${getAvatarColor(displayName)} flex items-center justify-center text-white font-medium shadow-md`}>
+          {displayName.charAt(0).toUpperCase()}
+        </div>
+        
+        <div className="flex-grow min-w-0">
+          <div className="flex justify-between items-center">
+            <h3 className={`${
+              !email.read_at 
+                ? 'font-semibold text-white' 
+                : 'font-medium text-gray-300'
+            } truncate`}>
+              {displayName}
+            </h3>
+            <span className="text-xs text-gray-400 whitespace-nowrap ml-2">
+              {formattedDate}
             </span>
-          )}
-        </div>
-        <div className="text-xs text-gray-500">
-          {formattedDate}
+          </div>
+          
+          <div className="flex items-center">
+            <h4 className={`truncate ${
+              !email.read_at 
+                ? 'font-medium text-gray-100' 
+                : 'text-gray-300'
+            }`}>
+              {email.subject}
+            </h4>
+            
+            {isEncrypted && (
+              <span className="ml-2 text-xs bg-indigo-900/60 text-indigo-300 py-0.5 px-2 rounded-full flex-shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                </svg>
+                Encrypted
+              </span>
+            )}
+          </div>
+          
+          <p className={`truncate text-sm ${
+            !email.read_at 
+              ? 'text-gray-300' 
+              : 'text-gray-400'
+          }`}>
+            {email.body.replace(/<[^>]*>/g, '').substring(0, 100)}
+            {email.body.length > 100 ? '...' : ''}
+          </p>
         </div>
       </div>
-      
-      <div className={`text-sm ${isUnread ? 'font-semibold text-white' : 'text-gray-400'} flex items-center`}>
-        {email.subject}
-        {email.is_encrypted && (
-          <span className="ml-2 text-xs px-2 py-0.5 bg-blue-900/40 text-blue-400 border border-blue-500/30 rounded-full">
-            Encrypted
-          </span>
-        )}
-      </div>
-      
-      <div className="text-xs text-gray-500 mt-1 line-clamp-1">
-        {email.is_encrypted 
-          ? "This message is encrypted with quantum-resistant encryption."
-          : createPreviewText(email.body)
-        }
-      </div>
-      
-      {/* Display labels if present */}
-      {hasLabels && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {email.label_ids!.map(labelId => (
-            <span 
-              key={labelId}
-              className={`${getLabelColor(labelId)} text-white text-xs px-2 py-0.5 rounded-full`}
-            >
-              {labelId.replace('CATEGORY_', '')}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
-}
+};
 
-export default EmailListItem;
+// Use memo to prevent unnecessary re-renders
+export default memo(EmailListItem, (prevProps, nextProps) => {
+  // Only re-render if email ID changes or read status changes
+  return prevProps.email.id === nextProps.email.id && 
+         prevProps.email.read_at === nextProps.email.read_at;
+});

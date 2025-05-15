@@ -50,6 +50,9 @@ pub struct EmailFilter {
     pub sort_order: Option<SortOrder>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+    pub force_refresh: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
