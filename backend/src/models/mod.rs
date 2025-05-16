@@ -7,5 +7,5 @@ mod label;
 // Re-export public items
 pub use auth::{AuthQuery, GoogleUserInfo};
 pub use response::UserResponse;
-pub use email::{Email, SendEmailRequest, EmailPreview, EmailFilter, SortField, SortOrder};
+pub use email::{Email, SendEmailRequest, EmailFilter, SortField, SortOrder};
 pub use label::{GmailLabel, LabelColor};

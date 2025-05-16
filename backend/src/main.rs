@@ -6,9 +6,6 @@ use dotenv::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use env_logger::Builder;
 use log::LevelFilter;
-use std::fs::File;
-use env_logger::fmt::Color;
-use std::io::Write;
 
 // Import modules
 mod models;

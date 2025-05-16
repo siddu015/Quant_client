@@ -2,7 +2,6 @@ use actix_web::{web, HttpResponse, Responder, HttpRequest};
 use serde_json::json;
 use uuid::Uuid;
 use base64::{encode_config, STANDARD};
-use std::env;
 use log::{info, error, warn};
 
 use crate::db;
@@ -241,12 +240,12 @@ pub async fn get_emails(
                 );
 
                 // Try loading from cache if not forcing refresh
-                let mut cached_hit = false;
+                let mut _cached_hit = false;
                 let emails = if !force_refresh {
                     match redis_cache.get_cached_emails_paginated(&email, &filter_hash, page, Some(page_size)).await {
                         Ok(Some((emails, total_pages, cached_page))) => {
                             info!("Cache hit for user {} with {} emails", email, emails.len());
-                            cached_hit = true;
+                            _cached_hit = true;
                             Some((emails, total_pages, cached_page))
                         }
                         _ => None
@@ -255,8 +254,8 @@ pub async fn get_emails(
                     None
                 };
                 
-                // Get last sync timestamp
-                let last_sync = redis_cache.get_last_sync(&email).await.unwrap_or(None);
+                // Get the timestamp of last sync to optimize refresh
+                let _last_sync_timestamp = redis_cache.get_last_sync(&email).await.unwrap_or(None);
                 
                 if let Some((emails, total_pages, current_page)) = emails {
                     // Cache hit - return the cached data with pagination info
@@ -266,7 +265,7 @@ pub async fn get_emails(
                         "total_pages": total_pages,
                         "current_page": current_page,
                         "cached": true,
-                        "last_sync": last_sync
+                        "last_sync": _last_sync_timestamp
                     }))
                 } else {
                     // Cache miss or force refresh - fetch from Gmail
@@ -281,7 +280,7 @@ pub async fn get_emails(
                                 let batch_size = page_size * 2; // Fetch more to have buffer
                                 
                                 let inbox_future = async {
-                                    if let Ok(messages) = gmail_client.get_messages_batched(&email, &access_token, None, batch_size).await {
+                                    if let Ok(messages) = gmail_client.get_messages_with_limit(&email, &access_token, None, batch_size).await {
                                 let mut received_emails = Vec::new();
                                 
                                         for msg_id in &messages {
@@ -301,7 +300,7 @@ pub async fn get_emails(
                                 };
                                 
                                 let sent_future = async {
-                                    if let Ok(messages) = gmail_client.get_messages_batched(&email, &access_token, Some("in:sent"), batch_size).await {
+                                    if let Ok(messages) = gmail_client.get_messages_with_limit(&email, &access_token, Some("in:sent"), batch_size).await {
                                 let mut sent_emails = Vec::new();
                                 
                                         for msg_id in &messages {
@@ -332,10 +331,12 @@ pub async fn get_emails(
                                 }
                                 
                                 if let Some(sent) = sent_result {
+                                    // Clone before extending to keep a copy for caching
+                                    let sent_clone = sent.clone();
                                     all_emails.extend(sent);
                                     
-                                    // Cache all sent emails 
-                                    redis_cache.cache_emails_paginated(&email, "sent", &sent, None).await
+                                    // Cache all sent emails using the clone
+                                    redis_cache.cache_emails_paginated(&email, "sent", &sent_clone, None).await
                                         .unwrap_or_else(|e| error!("Failed to cache sent emails: {}", e));
                                 }
                                 
@@ -523,7 +524,7 @@ pub async fn refresh_emails(
                             const REFRESH_LIMIT: usize = 20;
                             
                             // Get the timestamp of last sync to optimize refresh
-                            let last_sync_timestamp = redis_cache.get_last_sync(&email).await.unwrap_or(None);
+                            let _last_sync_timestamp = redis_cache.get_last_sync(&email).await.unwrap_or(None);
                             
                             // Fetch inbox messages (most recent only)
                             let received_future = async {

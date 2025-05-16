@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use crate::models::{Email, GmailLabel};
 use crate::gmail::GmailMessageId;
-use log::{debug, error, info};
+use log::{error, info};
 
 // Constants for cache TTL
 const EMAIL_CACHE_TTL: usize = 7200; // Increase to 2 hours
@@ -298,7 +298,7 @@ impl RedisCache {
         // Get current email lists
         let category = if is_sent { "sent" } else { "received" };
         
-        if let Ok(Some((mut emails, page, total_pages))) = self.get_cached_emails_paginated(user_id, category, 0, None).await {
+        if let Ok(Some((mut emails, page, _total_pages))) = self.get_cached_emails_paginated(user_id, category, 0, None).await {
             // Only update the first page which contains the most recent emails
             if page == 0 {
                 // Add the new email to the beginning (or update existing)

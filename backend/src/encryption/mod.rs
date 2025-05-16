@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use pqcrypto_kyber::kyber768::{self, keypair, encapsulate, decapsulate};
 use base64::{encode_config, decode_config, STANDARD};
 use std::error::Error;
-use log::{info, error};
 use pqcrypto_traits::kem::{PublicKey, SecretKey, Ciphertext, SharedSecret};
 
 pub mod keys;

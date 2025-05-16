@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use serde_json::json;
-use crate::models::{GmailLabel, LabelColor};
+use crate::models::GmailLabel;
 
 // Gmail API token response
 #[derive(Debug, Deserialize)]
@@ -595,7 +595,7 @@ fn extract_message_body(payload: &GmailPayload) -> String {
 }
 
 // Process a SendMessageResponse into basic components for creating Email objects
-pub fn process_send_message_response(message: &SendMessageResponse, from_email: &str, to_email: &str, 
+pub fn process_send_message_response(_message: &SendMessageResponse, from_email: &str, to_email: &str, 
                                    subject: &str, body: &str) -> (String, String, String, String, String) {
     // Return the components directly from the inputs, since SendMessageResponse doesn't have these fields
     (
