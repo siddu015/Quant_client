@@ -4,14 +4,15 @@ use std::sync::Arc;
 use std::time::Duration;
 use crate::models::{Email, GmailLabel};
 use crate::gmail::GmailMessageId;
-use log::{debug, error, info};
+use log::{error, info};
 
 // Constants for cache TTL
-const EMAIL_CACHE_TTL: usize = 3600; // 1 hour
-const MESSAGE_LIST_CACHE_TTL: usize = 1800; // 30 minutes
-const LABEL_CACHE_TTL: usize = 7200; // 2 hours
+const EMAIL_CACHE_TTL: usize = 7200; // Increase to 2 hours
+const MESSAGE_LIST_CACHE_TTL: usize = 3600; // Increase to 1 hour
+const LABEL_CACHE_TTL: usize = 14400; // Increase to 4 hours
 const RETRY_DELAY: Duration = Duration::from_secs(1);
 const MAX_RETRIES: u32 = 3;
+const DEFAULT_PAGE_SIZE: usize = 50;
 
 pub struct RedisCache {
     client: Client,
@@ -294,33 +295,45 @@ impl RedisCache {
     }
 
     pub async fn update_email_lists(&self, user_id: &str, email: &Email, is_sent: bool) -> Result<(), RedisError> {
-        let mut conn = self.get_connection_with_retry().await?;
+        // Get current email lists
         let category = if is_sent { "sent" } else { "received" };
         
-        // Get existing list
-        match self.get_cached_emails(user_id, category).await? {
-            Some(mut emails) => {
-                // Add new email at the beginning (most recent)
-                emails.insert(0, email.clone());
-                // Cache updated list
-                self.cache_emails(user_id, category, &emails).await?;
-                info!("Updated {} email list cache for {}", category, user_id);
-            }
-            None => {
-                // Create new list with just this email
-                self.cache_emails(user_id, category, &vec![email.clone()]).await?;
-                info!("Created new {} email list cache for {}", category, user_id);
+        if let Ok(Some((mut emails, page, _total_pages))) = self.get_cached_emails_paginated(user_id, category, 0, None).await {
+            // Only update the first page which contains the most recent emails
+            if page == 0 {
+                // Add the new email to the beginning (or update existing)
+                let existing_idx = emails.iter().position(|e| e.id == email.id);
+                if let Some(idx) = existing_idx {
+                    emails[idx] = email.clone();
+                } else {
+                    emails.insert(0, email.clone());
+                    
+                    // If page is full, remove the last item
+                    if emails.len() > DEFAULT_PAGE_SIZE {
+                        emails.pop();
+                    }
+                }
+                
+                // Cache the updated page
+                let mut conn = self.get_connection_with_retry().await?;
+                let page_key = format!("emails:{}:{}:page:0", user_id, category);
+                
+                let json = serde_json::to_string(&emails).map_err(|e| {
+                    error!("Failed to serialize updated email page: {}", e);
+                    RedisError::from((redis::ErrorKind::IoError, "Serialization error", e.to_string()))
+                })?;
+                
+                let _: () = conn.set_ex::<_, _, ()>(&page_key, &json, EMAIL_CACHE_TTL).await?;
+                
+                // Update index (this is a simplification - ideally we'd update the entire index)
+                // For production, you'd need to rebuild the entire index
+                
+                info!("Updated first page of emails for {} with new/updated email", category);
             }
         }
         
-        // Invalidate any filtered caches
-        let pattern = format!("emails:{}:*", user_id);
-        let keys: Vec<String> = conn.keys(&pattern).await?;
-        for key in keys {
-            if !key.ends_with(":sent") && !key.ends_with(":received") {
-                let _: () = conn.del(&key).await?;
-            }
-        }
+        // Always cache the individual email
+        self.cache_email(user_id, &email.id, email).await?;
         
         Ok(())
     }
@@ -339,6 +352,150 @@ impl RedisCache {
         
         info!("Partially invalidated cache for user {}", user_id);
         Ok(())
+    }
+
+    // Cache emails with pagination support
+    pub async fn cache_emails_paginated(&self, user_id: &str, category: &str, emails: &[Email], page_size: Option<usize>) -> Result<(), RedisError> {
+        let mut conn = self.get_connection_with_retry().await?;
+        let page_size = page_size.unwrap_or(DEFAULT_PAGE_SIZE);
+        
+        // Store total count
+        let count_key = format!("emails:{}:{}:count", user_id, category);
+        let _: () = conn.set_ex(&count_key, emails.len(), EMAIL_CACHE_TTL).await?;
+        
+        // Store emails in pages
+        let chunks = emails.chunks(page_size);
+        for (i, chunk) in chunks.enumerate() {
+            let page_key = format!("emails:{}:{}:page:{}", user_id, category, i);
+            let json = serde_json::to_string(chunk).map_err(|e| {
+                error!("Failed to serialize email page: {}", e);
+                RedisError::from((redis::ErrorKind::IoError, "Serialization error", e.to_string()))
+            })?;
+            
+            let _: () = conn.set_ex::<_, _, ()>(&page_key, &json, EMAIL_CACHE_TTL).await?;
+        }
+        
+        // Store index of emails for quick lookup
+        let index_key = format!("emails:{}:{}:index", user_id, category);
+        let index: Vec<(String, usize, usize)> = emails.iter().enumerate().map(|(i, email)| {
+            (email.id.clone(), i / page_size, i % page_size)
+        }).collect();
+        
+        let index_json = serde_json::to_string(&index).map_err(|e| {
+            error!("Failed to serialize email index: {}", e);
+            RedisError::from((redis::ErrorKind::IoError, "Serialization error", e.to_string()))
+        })?;
+        
+        let _: () = conn.set_ex::<_, _, ()>(&index_key, &index_json, EMAIL_CACHE_TTL).await?;
+        
+        info!("Cached {} emails in {} pages for {}", emails.len(), (emails.len() as f64 / page_size as f64).ceil(), category);
+        Ok(())
+    }
+
+    // Get cached emails with pagination support
+    pub async fn get_cached_emails_paginated(&self, user_id: &str, category: &str, page: usize, page_size: Option<usize>) -> Result<Option<(Vec<Email>, usize, usize)>, RedisError> {
+        let mut conn = self.get_connection_with_retry().await?;
+        let page_size = page_size.unwrap_or(DEFAULT_PAGE_SIZE);
+        
+        // Check if we have emails cached
+        let count_key = format!("emails:{}:{}:count", user_id, category);
+        let total_count: Option<usize> = conn.get(&count_key).await?;
+        
+        if let Some(count) = total_count {
+            let page_key = format!("emails:{}:{}:page:{}", user_id, category, page);
+            
+            match conn.get::<_, Option<String>>(&page_key).await {
+                Ok(Some(json)) => match serde_json::from_str(&json) {
+                    Ok(emails) => {
+                        info!("Retrieved page {} of {} emails from cache", page, category);
+                        let total_pages = (count as f64 / page_size as f64).ceil() as usize;
+                        Ok(Some((emails, page, total_pages)))
+                    },
+                    Err(e) => {
+                        error!("Failed to deserialize emails page: {}", e);
+                        let _: () = conn.del(&page_key).await?;
+                        Ok(None)
+                    }
+                },
+                Ok(None) => {
+                    info!("No cached email page found for {}", category);
+                    Ok(None)
+                },
+                Err(e) => {
+                    error!("Failed to get cached email page: {}", e);
+                    Err(e)
+                }
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    // Get email by ID efficiently from cache
+    pub async fn get_cached_email_by_id(&self, user_id: &str, category: &str, email_id: &str) -> Result<Option<Email>, RedisError> {
+        let mut conn = self.get_connection_with_retry().await?;
+        
+        // First check direct cache
+        let direct_key = format!("email:{}:{}", user_id, email_id);
+        if let Ok(Some(json)) = conn.get::<_, Option<String>>(&direct_key).await {
+            if let Ok(email) = serde_json::from_str(&json) {
+                return Ok(Some(email));
+            }
+        }
+        
+        // If not found in direct cache, check index
+        let index_key = format!("emails:{}:{}:index", user_id, category);
+        
+        if let Ok(Some(index_json)) = conn.get::<_, Option<String>>(&index_key).await {
+            if let Ok(index) = serde_json::from_str::<Vec<(String, usize, usize)>>(&index_json) {
+                if let Some((_, page_num, idx)) = index.iter().find(|(id, _, _)| id == email_id) {
+                    let page_key = format!("emails:{}:{}:page:{}", user_id, category, page_num);
+                    
+                    if let Ok(Some(page_json)) = conn.get::<_, Option<String>>(&page_key).await {
+                        if let Ok(emails) = serde_json::from_str::<Vec<Email>>(&page_json) {
+                            if let Some(email) = emails.get(*idx) {
+                                return Ok(Some(email.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(None)
+    }
+
+    // Update sync timestamp
+    pub async fn set_last_sync(&self, user_id: &str) -> Result<(), RedisError> {
+        let mut conn = self.get_connection_with_retry().await?;
+        let key = format!("last_sync:{}", user_id);
+        let now = chrono::Utc::now().timestamp();
+        let _: () = conn.set_ex::<_, _, ()>(&key, now, 86400).await?;
+        Ok(())
+    }
+
+    // Get last sync timestamp
+    pub async fn get_last_sync(&self, user_id: &str) -> Result<Option<i64>, RedisError> {
+        let mut conn = self.get_connection_with_retry().await?;
+        let key = format!("last_sync:{}", user_id);
+        conn.get::<_, Option<i64>>(&key).await
+    }
+
+    // Track email read status
+    pub async fn mark_email_read(&self, user_id: &str, email_id: &str) -> Result<(), RedisError> {
+        let mut conn = self.get_connection_with_retry().await?;
+        let key = format!("read:{}:{}", user_id, email_id);
+        let now = chrono::Utc::now().timestamp();
+        let _: () = conn.set_ex::<_, _, ()>(&key, now, 86400 * 30).await?; // Keep for 30 days
+        Ok(())
+    }
+
+    // Check if email was read
+    pub async fn was_email_read(&self, user_id: &str, email_id: &str) -> Result<bool, RedisError> {
+        let mut conn = self.get_connection_with_retry().await?;
+        let key = format!("read:{}:{}", user_id, email_id);
+        let exists: bool = conn.exists(&key).await?;
+        Ok(exists)
     }
 }
 

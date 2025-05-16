@@ -4,7 +4,6 @@ use serde_json::json;
 use crate::db;
 use crate::gmail::GmailClient;
 use crate::cache::RedisCache;
-use crate::models::GmailLabel;
 
 type DbPool = web::Data<sqlx::PgPool>;
 type GmailClientData = web::Data<std::sync::Arc<GmailClient>>;

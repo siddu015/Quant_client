@@ -241,246 +241,90 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
   const displayEmail = decryptedEmail || email;
 
   return (
-    <div className="bg-gray-900/30 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-gray-800/50">
+    <div className="h-full flex flex-col bg-gray-900/30 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-gray-800/50">
       {/* Header */}
-      <div className="p-4 bg-gray-800/30 border-b border-gray-800/50 flex justify-between items-center">
+      <div className="p-4 bg-gray-800/40 border-b border-gray-700/50 flex justify-between items-center">
         <button
           onClick={onBack}
-          className="bg-gray-800/50 hover:bg-gray-700/50 text-gray-200 p-2 rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/10"
+          className="bg-gray-800/60 hover:bg-gray-700/60 text-gray-200 p-2 rounded-xl transition-all duration-200 hover:shadow-lg flex items-center gap-2"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
+          <span>Back</span>
         </button>
-        <div className="flex items-center space-x-2">
-          <span className={`px-3 py-1 rounded-xl text-sm ${isSentEmail ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
-            {isSentEmail ? 'Sent' : 'Received'}
-          </span>
-          {email.read_at && !isSentEmail && (
-            <span className="bg-gray-700/50 text-gray-400 px-3 py-1 rounded-xl text-sm">
-              Read
-            </span>
-          )}
-          {!email.read_at && !isSentEmail && (
-            <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-3 py-1 rounded-xl text-sm flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              Unread
-            </span>
-          )}
-          {email.important && (
-            <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-3 py-1 rounded-xl text-sm flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-              </svg>
-              Important
-            </span>
-          )}
-          {email.attachments && email.attachments.length > 0 && (
-            <span className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-3 py-1 rounded-xl text-sm flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-              </svg>
-              Attachment ({email.attachments.length})
-            </span>
-          )}
-          {email.category && (
-            <span className="bg-green-500/20 text-green-400 border border-green-500/30 px-3 py-1 rounded-xl text-sm flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-              {email.category}
-            </span>
-          )}
-          {email.is_encrypted && (
-            <span className="bg-blue-900/40 text-blue-400 border border-blue-500/30 px-3 py-1 rounded-xl text-sm flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              Quantum Encrypted
-            </span>
-          )}
+        
+        {email.is_encrypted && !decryptedEmail && (
+          <button
+            onClick={handleDecrypt}
+            disabled={isDecrypting}
+            className={`bg-indigo-800/60 hover:bg-indigo-700/60 text-indigo-100 px-3 py-2 rounded-xl transition-all duration-200 flex items-center gap-2 ${isDecrypting ? 'opacity-70 cursor-not-allowed' : ''}`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+            </svg>
+            <span>{isDecrypting ? 'Decrypting...' : 'Decrypt Message'}</span>
+          </button>
+        )}
+      </div>
+      
+      {/* Email metadata */}
+      <div className="p-6 border-b border-gray-700/30">
+        <div className="flex items-start gap-4">
+          <div className={`flex-shrink-0 w-12 h-12 ${senderAvatarColor} rounded-full flex items-center justify-center text-white text-xl font-medium shadow-lg`}>
+            {getInitial(email.sender_email)}
+          </div>
+          
+          <div className="flex-grow">
+            <div className="flex flex-col md:flex-row md:items-baseline justify-between md:gap-4">
+              <h1 className="text-xl font-semibold text-white mb-1">
+                {displayEmail.subject}
+                {email.is_encrypted && (
+                  <span className="ml-2 text-xs bg-indigo-900/60 text-indigo-300 py-0.5 px-2 rounded-full inline-flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                    </svg>
+                    Encrypted
+                  </span>
+                )}
+              </h1>
+              <span className="text-sm text-gray-400">
+                {formatDate(email.sent_at)}
+              </span>
+            </div>
+            
+            <div className="flex items-center text-gray-300 mt-2">
+              <span className="font-medium">
+                {isSentEmail ? 'To: ' : 'From: '}
+              </span>
+              <span className="ml-2">
+                {isSentEmail ? email.recipient_email : email.sender_email}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
-
+      
       {/* Email content */}
-      <div className="p-6">
-        <div className="flex items-start space-x-4">
-          <div className={`flex-shrink-0 w-12 h-12 rounded-xl ${isSentEmail ? 'bg-purple-500/50' : 'bg-blue-500/50'} flex items-center justify-center text-white font-medium text-lg`}>
-            {(isSentEmail ? email.recipient_email : email.sender_email).charAt(0).toUpperCase()}
+      <div className="custom-scrollbar p-6 overflow-y-auto flex-grow bg-gradient-to-b from-gray-900/20 to-gray-800/20">
+        {/* Determine if we're dealing with a marketing email (likely HTML) or regular text */}
+        {isMarketingEmail(displayEmail.subject, displayEmail.body) ? (
+          // For marketing emails, wrap in a div with the html-email class for styling
+          <div 
+            className="html-email" 
+            dangerouslySetInnerHTML={{ __html: displayEmail.body }} 
+          />
+        ) : (
+          // For regular emails, use markdown parser with proper styling
+          <div className="email-content">
+            <ReactMarkdown
+              rehypePlugins={[rehypeRaw, rehypeSanitize]}
+              remarkPlugins={[remarkGfm]}
+            >
+              {preprocessMarkdown(displayEmail.body)}
+            </ReactMarkdown>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-col">
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-400 mb-1">Subject:</label>
-                <h2 className="text-xl font-semibold text-gray-200">{displayEmail.subject}</h2>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">From:</label>
-                  <p className="text-sm text-gray-300">{displayEmail.sender_email}</p>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">To:</label>
-                  <p className="text-sm text-gray-300">{displayEmail.recipient_email}</p>
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Date:</label>
-                <p className="text-sm text-gray-300">{formatDate(displayEmail.sent_at)}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <label className="block text-sm font-medium text-gray-400 mb-2">Message:</label>
-          {email.is_encrypted && !decryptedEmail ? (
-            <div className="bg-gray-800/20 rounded-xl p-6 text-center">
-              <div className="bg-blue-900/30 rounded-xl p-6 mb-4">
-                <div className="flex justify-center mb-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-blue-400 mb-2">Quantum Encrypted Message</h3>
-                <p className="text-gray-300 mb-4">This message is encrypted with quantum-resistant encryption.</p>
-                <button
-                  onClick={handleDecrypt}
-                  disabled={isDecrypting}
-                  className={`w-full py-2 px-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-lg shadow-lg transition-all duration-200 ${isDecrypting ? 'opacity-70 cursor-not-allowed' : ''}`}
-                >
-                  {isDecrypting ? (
-                    <span className="flex items-center justify-center">
-                      <svg className="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Decrypting Message...
-                    </span>
-                  ) : (
-                    <span className="flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
-                      </svg>
-                      Decrypt Message
-                    </span>
-                  )}
-                </button>
-              </div>
-              
-              <div className="text-gray-400 text-sm">
-                <p>The content of this message is encrypted and can only be viewed with your private key.</p>
-                <p>Click the button above to decrypt the message.</p>
-              </div>
-            </div>
-          ) : isMarketingEmail(displayEmail.subject, displayEmail.body) ? (
-            // Marketing email specialized rendering with enhanced formatting
-            <div className="bg-gray-800/20 rounded-xl p-6">
-              <div className="email-content newsletter-content text-gray-300">
-                {displayEmail.body.startsWith('<html') || displayEmail.body.includes('<div') || displayEmail.body.includes('<table') ? (
-                  // For HTML marketing emails
-                  <div 
-                    className="html-email marketing-email" 
-                    dangerouslySetInnerHTML={{ 
-                      __html: displayEmail.body 
-                    }} 
-                  />
-                ) : (
-                  // For markdown marketing emails
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw, rehypeSanitize]}
-                    components={{
-                      // Custom components with enhanced styling for marketing emails
-                      h1: ({node, ...props}: any) => <h1 className="text-2xl font-bold text-blue-300 my-6 pb-2 border-b border-blue-800/30" {...props} />,
-                      h2: ({node, ...props}: any) => <h2 className="text-xl font-bold text-blue-300 my-5 pb-1 border-b border-blue-800/30" {...props} />,
-                      h3: ({node, ...props}: any) => <h3 className="text-lg font-bold text-blue-300 my-4" {...props} />,
-                      h4: ({node, ...props}: any) => <h4 className="text-base font-semibold text-blue-300 my-3" {...props} />,
-                      p: ({node, ...props}: any) => <p className="my-3 text-gray-300 leading-relaxed" {...props} />,
-                      a: ({node, href, ...props}: any) => {
-                        if (href && href.startsWith('mailto:')) {
-                          return <a className="text-blue-400 hover:text-blue-300 font-medium" href={href} {...props} />;
-                        }
-                        return <a className="text-blue-400 hover:text-blue-300 font-medium" href={href} target="_blank" rel="noopener noreferrer" {...props} />;
-                      },
-                      ul: ({node, ...props}: any) => <ul className="my-4 pl-6 space-y-2" {...props} />,
-                      ol: ({node, ...props}: any) => <ol className="my-4 pl-6 space-y-2 list-decimal" {...props} />,
-                      li: ({node, ...props}: any) => <li className="pl-1 text-gray-300" {...props} />,
-                      hr: ({node, ...props}: any) => <hr className="my-6 border-blue-800/30" {...props} />,
-                      img: ({node, ...props}: any) => <img className="max-w-full h-auto rounded my-6 shadow-lg" {...props} />
-                    }}
-                  >
-                    {preprocessMarkdown(displayEmail.body)}
-                  </ReactMarkdown>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-gray-800/20 rounded-xl p-6">
-              <div className="email-content text-gray-300">
-                {displayEmail.body.startsWith('<html') || displayEmail.body.includes('<div') || displayEmail.body.includes('<table') ? (
-                  // For HTML emails, use dangerouslySetInnerHTML with caution 
-                  // This is already sanitized by rehype-sanitize in React-Markdown
-                  <div 
-                    className="html-email" 
-                    dangerouslySetInnerHTML={{ 
-                      __html: displayEmail.body 
-                    }} 
-                  />
-                ) : (
-                  // For markdown and plain text emails
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw, rehypeSanitize]}
-                    components={{
-                      // Custom components for rendering markdown elements
-                      h1: ({node, ...props}: any) => <h1 className="text-xl font-bold text-gray-200 my-4" {...props} />,
-                      h2: ({node, ...props}: any) => <h2 className="text-lg font-bold text-gray-200 my-3" {...props} />,
-                      h3: ({node, ...props}: any) => <h3 className="text-base font-bold text-gray-200 my-3" {...props} />,
-                      h4: ({node, ...props}: any) => <h4 className="text-base font-semibold text-gray-200 my-2" {...props} />,
-                      h5: ({node, ...props}: any) => <h5 className="text-sm font-semibold text-gray-200 my-2" {...props} />,
-                      h6: ({node, ...props}: any) => <h6 className="text-sm font-semibold text-gray-200 my-2" {...props} />,
-                      p: ({node, ...props}: any) => <p className="my-2 text-gray-300" {...props} />,
-                      a: ({node, href, ...props}: any) => {
-                        // Handle mailto links
-                        if (href && href.startsWith('mailto:')) {
-                          return <a className="text-blue-400 hover:text-blue-300 underline" href={href} {...props} />;
-                        }
-                        // Handle normal links - open in new tab
-                        return <a className="text-blue-400 hover:text-blue-300 underline" href={href} target="_blank" rel="noopener noreferrer" {...props} />;
-                      },
-                      ul: ({node, ...props}: any) => <ul className="list-disc pl-5 my-2" {...props} />,
-                      ol: ({node, ...props}: any) => <ol className="list-decimal pl-5 my-2" {...props} />,
-                      li: ({node, ...props}: any) => <li className="my-1" {...props} />,
-                      blockquote: ({node, ...props}: any) => <blockquote className="border-l-4 border-gray-600 pl-4 italic my-4 text-gray-400" {...props} />,
-                      code: ({node, inline, className, children, ...props}: any) => 
-                        inline 
-                          ? <code className="bg-gray-700/50 px-1 rounded text-blue-300" {...props}>{children}</code>
-                          : <code className="block bg-gray-700/50 p-3 rounded my-4 text-blue-300 overflow-x-auto" {...props}>{children}</code>,
-                      pre: ({node, ...props}: any) => <pre className="bg-gray-700/50 p-4 rounded-lg my-4 overflow-x-auto" {...props} />,
-                      hr: ({node, ...props}: any) => <hr className="my-6 border-gray-700" {...props} />,
-                      table: ({node, ...props}: any) => <table className="min-w-full divide-y divide-gray-700 my-4" {...props} />,
-                      thead: ({node, ...props}: any) => <thead className="bg-gray-700/30" {...props} />,
-                      tbody: ({node, ...props}: any) => <tbody className="divide-y divide-gray-700" {...props} />,
-                      tr: ({node, ...props}: any) => <tr className="hover:bg-gray-700/30" {...props} />,
-                      th: ({node, ...props}: any) => <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider" {...props} />,
-                      td: ({node, ...props}: any) => <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300" {...props} />,
-                      img: ({node, ...props}: any) => <img className="max-w-full h-auto rounded my-4" {...props} />
-                    }}
-                  >
-                    {/* Process the email content to fix markdown formatting issues */}
-                    {preprocessMarkdown(displayEmail.body)}
-                  </ReactMarkdown>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

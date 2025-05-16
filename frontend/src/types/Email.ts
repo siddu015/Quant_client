@@ -30,3 +30,32 @@ export interface SendEmailRequest {
   body: string;
   encrypt?: boolean;
 }
+
+export interface EmailsResponse {
+  emails: Email[];
+  success: boolean;
+  total_pages: number;
+  current_page: number;
+  cached: boolean;
+  last_sync?: number;
+}
+
+export interface EmailRefreshResponse {
+  success: boolean;
+  message: string;
+  new_emails: number;
+  last_sync?: number;
+}
+
+export interface EmailFilter {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  sender?: string;
+  recipient?: string;
+  is_read?: boolean;
+  label?: string;
+  sort_by?: 'date' | 'sender' | 'subject';
+  sort_order?: 'asc' | 'desc';
+  force_refresh?: boolean;
+}

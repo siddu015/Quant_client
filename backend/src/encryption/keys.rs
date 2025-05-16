@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::error::Error;
-use log::{info, error};
+use log::info;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct KeyPair {

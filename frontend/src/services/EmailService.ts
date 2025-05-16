@@ -187,11 +187,19 @@ const logEmailCounts = (sent: Email[], received: Email[]) => {
  * Email service for handling email operations
  */
 export const EmailService = {
-  // Get all emails (both sent and received)
-  async getEmails(): Promise<{ sent: Email[], received: Email[] }> {
+  // Get all emails (both sent and received) with pagination and refresh control
+  async getEmails(page = 0, pageSize = 50, forceRefresh = false): Promise<{ sent: Email[], received: Email[], totalPages: number, currentPage: number, lastSync?: number }> {
     try {
-      console.log('Fetching emails...');
-      const response = await fetch(`${API_URL}/api/emails`, {
+      console.log(`Fetching emails: page=${page}, pageSize=${pageSize}, forceRefresh=${forceRefresh}`);
+      
+      // Add pagination and refresh parameters
+      const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: pageSize.toString(),
+        force_refresh: forceRefresh.toString()
+      });
+      
+      const response = await fetch(`${API_URL}/api/emails?${params.toString()}`, {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -212,7 +220,12 @@ export const EmailService = {
         throw new Error(data.error || 'Failed to fetch emails');
       }
 
-      // Handle unified emails array format
+      // Cache hit indicated by the API
+      if (data.cached) {
+        console.log('Using cached email data from server');
+      }
+
+      // Handle the raw emails from the pagination-aware API response
       if (data.emails && Array.isArray(data.emails)) {
         // Get user info to properly categorize emails
         const userResponse = await fetch(`${API_URL}/api/user`, {
@@ -220,7 +233,6 @@ export const EmailService = {
         });
         
         const userData: UserResponse = await userResponse.json();
-        console.log('User data for email categorization:', userData);
         
         if (!userResponse.ok || !userData.authenticated || !userData.email) {
           console.error('Failed to get user email for categorization:', userData.message || 'Unknown error');
@@ -228,116 +240,43 @@ export const EmailService = {
         }
         
         const userEmail = userData.email;
-        console.log('Categorizing emails for user:', userEmail);
         
         // Process all emails to add timestamps, format dates, etc.
         const processedEmails = processEmails(data.emails);
         
-        // Step 1: Split emails into sent and potential received categories
-        let sent = processedEmails.filter((email: Email) => 
-          email.sender_email === userEmail
-        );
+        // Split emails into sent and received
+        const sent = processedEmails.filter(email => email.sender_email === userEmail);
+        const received = processedEmails.filter(email => email.recipient_email === userEmail && email.sender_email !== userEmail);
         
-        // Deduplicate sent emails using a Map with gmail_id or id as key
-        // This prevents the same email from appearing multiple times
-        const uniqueSentMap = new Map<string, Email>();
-        sent.forEach(email => {
-          const key = email.gmail_id || email.id;
-          if (!uniqueSentMap.has(key) || 
-              (email.sent_timestamp && uniqueSentMap.get(key)!.sent_timestamp && 
-               email.sent_timestamp > uniqueSentMap.get(key)!.sent_timestamp!)) {
-            uniqueSentMap.set(key, email);
-          }
-        });
+        // Use the helper function defined at the bottom of this file
+        const uniqueSent = _deduplicateEmails(sent);
+        const uniqueReceived = _deduplicateEmails(received);
         
-        // Convert the Map back to an array
-        sent = Array.from(uniqueSentMap.values());
+        // Sort emails by date
+        const sortedSent = sortEmailsByDate(uniqueSent);
+        const sortedReceived = sortEmailsByDate(uniqueReceived);
         
-        // Step 2: A message is "received" if the recipient is the current user 
-        // AND it wasn't sent by the current user (to prevent duplicates)
-        const received = processedEmails.filter((email: Email) => 
-          email.recipient_email === userEmail && 
-          email.sender_email !== userEmail
-        );
-        
-        // Log the number of emails being removed as duplicates
-        console.log(`Removed ${processedEmails.filter(e => e.sender_email === userEmail).length - sent.length} duplicate sent emails`);
-        
-        // Step 3: Sort both arrays by date (newest first)
-        const sortedSent = sortEmailsByDate(sent);
-        const sortedReceived = sortEmailsByDate(received);
-        
-        // Log diagnostic information
+        // Log email counts for debug
         logEmailCounts(sortedSent, sortedReceived);
         
-        return { 
-          sent: sortedSent, 
-          received: sortedReceived 
+        // Return emails with pagination metadata
+        return {
+          sent: sortedSent,
+          received: sortedReceived,
+          totalPages: data.total_pages || 1,
+          currentPage: data.current_page || 0,
+          lastSync: data.last_sync
         };
       }
       
-      // Handle legacy format if it exists (process both sent and received arrays)
-      if (Array.isArray(data.sent) && Array.isArray(data.received)) {
-        console.log('Using legacy email format');
-        
-        // Get user info for proper filtering
-        const userResponse = await fetch(`${API_URL}/api/user`, {
-          credentials: 'include',
-        });
-        
-        const userData: UserResponse = await userResponse.json();
-        const userEmail = userData.email || '';
-        
-        // Process emails
-        let processedSent = processEmails(data.sent);
-        let processedReceived = processEmails(data.received);
-        
-        // Deduplicate sent emails
-        const uniqueSentMap = new Map<string, Email>();
-        processedSent.forEach(email => {
-          const key = email.gmail_id || email.id;
-          if (!uniqueSentMap.has(key) || 
-              (email.sent_timestamp && uniqueSentMap.get(key)!.sent_timestamp && 
-               email.sent_timestamp > uniqueSentMap.get(key)!.sent_timestamp!)) {
-            uniqueSentMap.set(key, email);
-          }
-        });
-        
-        // Convert the Map back to an array
-        processedSent = Array.from(uniqueSentMap.values());
-        
-        // Ensure no duplication between sent and received
-        // If the user sent an email to themselves, it should only appear in sent
-        const sentIds = new Set(processedSent.map(email => email.gmail_id || email.id));
-        processedReceived = processedReceived.filter(email => 
-          // Keep email in received only if:
-          // 1. It's not from the current user (most important check)
-          email.sender_email !== userEmail &&
-          // 2. It's not already in the sent folder (backup check)
-          !sentIds.has(email.gmail_id || email.id)
-        );
-        
-        // Sort by date (newest first)
-        const sortedSent = sortEmailsByDate(processedSent);
-        const sortedReceived = sortEmailsByDate(processedReceived);
-        
-        // Log diagnostic information
-        logEmailCounts(sortedSent, sortedReceived);
-        
-        return { 
-          sent: sortedSent, 
-          received: sortedReceived 
-        };
-      }
-      
-      console.error('Invalid email response format:', data);
-      throw new Error('Invalid email response format');
+      throw new Error('Invalid email data format received from API');
     } catch (error) {
-      console.error('Error in getEmails:', error);
-      throw error;
+      console.error('Error fetching emails:', error);
+      // Return empty result on error
+      return { sent: [], received: [], totalPages: 1, currentPage: 0 };
     }
   },
-  
+
   // Get a specific email by ID
   async getEmail(id: number): Promise<Email | null> {
     try {
@@ -398,24 +337,8 @@ export const EmailService = {
         return false;
       }
       
-      // After sending, refresh emails to include the newly sent email
-      // Use a slight delay to ensure the backend has had time to process the email
-      try {
-        console.log('Waiting 500ms before refreshing emails...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        console.log('Refreshing emails to get newly sent email...');
-        const refreshResult = await this.refreshEmails();
-        console.log('Email refresh result:', refreshResult);
-        
-        if (!refreshResult) {
-          console.warn('Email refresh failed after sending, will need to manually refresh');
-        }
-      } catch (refreshError) {
-        console.warn('Failed to refresh emails after sending, but email was sent successfully:', refreshError);
-        // Don't return false here - the email was sent successfully even if refresh failed
-      }
-      
+      // Don't automatically refresh - let the user control when to refresh
+      // Just return success immediately
       return true;
     } catch (error) {
       console.error('Error in sendEmail:', error);
@@ -423,8 +346,8 @@ export const EmailService = {
     }
   },
   
-  // Force refresh emails from Gmail API
-  async refreshEmails(): Promise<boolean> {
+  // Refresh emails - optimized to only get new emails
+  async refreshEmails(): Promise<{ success: boolean, newEmailCount: number, lastSync?: number }> {
     try {
       console.log('Refreshing emails...');
       const response = await fetch(`${API_URL}/api/emails/refresh`, {
@@ -437,16 +360,26 @@ export const EmailService = {
       
       if (!response.ok) {
         console.error('Failed to refresh emails:', response.statusText);
-        throw new Error(`Failed to refresh emails: ${response.statusText}`);
+        return { success: false, newEmailCount: 0 };
       }
       
       const data = await response.json();
-      console.log('Refresh emails response:', data);
+      console.log('Email refresh response:', data);
       
-      return data.success;
+      if (!data.success) {
+        console.error('API returned unsuccessful response:', data.error || 'Unknown error');
+        return { success: false, newEmailCount: 0 };
+      }
+
+      // Include more detailed result with last sync time
+      return { 
+        success: true, 
+        newEmailCount: data.new_emails || 0,
+        lastSync: data.last_sync
+      };
     } catch (error) {
-      console.error('Error in refreshEmails:', error);
-      return false;
+      console.error('Error refreshing emails:', error);
+      return { success: false, newEmailCount: 0 };
     }
   },
   
@@ -512,4 +445,23 @@ export const EmailService = {
       return false;
     }
   }
+};
+
+// Helper function to deduplicate emails by ID
+const _deduplicateEmails = (emails: Email[]): Email[] => {
+  const uniqueMap = new Map<string, Email>();
+  
+  emails.forEach(email => {
+    const key = email.gmail_id || email.id;
+    // Check if this email should replace existing one - either not present yet
+    // or has a newer timestamp than the existing one
+    const existingEmail = uniqueMap.get(key);
+    if (!existingEmail || 
+        (email.sent_timestamp && existingEmail.sent_timestamp && 
+         email.sent_timestamp > existingEmail.sent_timestamp)) {
+      uniqueMap.set(key, email);
+    }
+  });
+  
+  return Array.from(uniqueMap.values());
 };

@@ -2,7 +2,6 @@ use actix_web::{web, HttpResponse, Responder, HttpRequest};
 use serde_json::json;
 use uuid::Uuid;
 use base64::{encode_config, STANDARD};
-use std::env;
 use log::{info, error, warn};
 
 use crate::db;
@@ -219,10 +218,15 @@ pub async fn get_emails(
         
         match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
             Ok(Some((email, _, _, refresh_token))) => {
-                info!("Fetching emails for user: {}", email);
+                let page = query.page.unwrap_or(0) as usize;
+                let page_size = query.page_size.unwrap_or(50) as usize;
+                let force_refresh = query.force_refresh.unwrap_or(false);
                 
-                // Try cache first
-                let cache_key = format!("{}:{}:{}:{}:{}:{}",
+                info!("Fetching emails for user: {}, page: {}, page_size: {}, force_refresh: {}", 
+                      email, page, page_size, force_refresh);
+                
+                // Create cache key from filter parameters
+                let filter_hash = format!("{}:{}:{}:{}:{}:{}",
                     query.label.as_deref().unwrap_or(""),
                     query.is_read.unwrap_or(false),
                     query.search.as_deref().unwrap_or(""),
@@ -235,132 +239,176 @@ pub async fn get_emails(
                     })
                 );
 
-                // Always fetch from Gmail API if refresh token exists
-                if let Some(refresh_token) = refresh_token.clone() {
+                // Try loading from cache if not forcing refresh
+                let mut _cached_hit = false;
+                let emails = if !force_refresh {
+                    match redis_cache.get_cached_emails_paginated(&email, &filter_hash, page, Some(page_size)).await {
+                        Ok(Some((emails, total_pages, cached_page))) => {
+                            info!("Cache hit for user {} with {} emails", email, emails.len());
+                            _cached_hit = true;
+                            Some((emails, total_pages, cached_page))
+                        }
+                        _ => None
+                    }
+                } else {
+                    None
+                };
+                
+                // Get the timestamp of last sync to optimize refresh
+                let _last_sync_timestamp = redis_cache.get_last_sync(&email).await.unwrap_or(None);
+                
+                if let Some((emails, total_pages, current_page)) = emails {
+                    // Cache hit - return the cached data with pagination info
+                    HttpResponse::Ok().json(json!({
+                        "success": true,
+                        "emails": emails,
+                        "total_pages": total_pages,
+                        "current_page": current_page,
+                        "cached": true,
+                        "last_sync": _last_sync_timestamp
+                    }))
+                } else {
+                    // Cache miss or force refresh - fetch from Gmail
+                    if let Some(refresh_token) = refresh_token {
                     match gmail_client.get_token(&email, &refresh_token).await {
                         Ok(access_token) => {
                             let mut all_emails = Vec::new();
                             
-                            // Fetch inbox messages
-                            if let Ok(messages) = gmail_client.get_messages(&email, &access_token, None).await {
+                                // Get both inbox and sent messages concurrently with batching
+                                // Note: For pagination efficiency, we request more messages than we need
+                                // but only process the ones we need for the requested page
+                                let batch_size = page_size * 2; // Fetch more to have buffer
+                                
+                                let inbox_future = async {
+                                    if let Ok(messages) = gmail_client.get_messages_with_limit(&email, &access_token, None, batch_size).await {
                                 let mut received_emails = Vec::new();
-                                let limit = std::cmp::min(50, messages.len());
                                 
-                                for msg_id in &messages[0..limit] {
+                                        for msg_id in &messages {
                                     if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
                                         if let Some(email_obj) = process_gmail_message(&message, &email) {
-                                            let _ = redis_cache.cache_email(&email, &message.id, &email_obj).await;
-                                            received_emails.push(email_obj.clone());
-                                            all_emails.push(email_obj);
+                                                    if email_obj.recipient_email == email {
+                                                        received_emails.push(email_obj);
+                                                    }
+                                                }
+                                            }
                                         }
+                                        
+                                        Some(received_emails)
+                                    } else {
+                                        None
                                     }
-                                }
+                                };
                                 
-                                if !received_emails.is_empty() {
-                                    let _ = redis_cache.cache_emails(&email, "received", &received_emails).await;
-                                    info!("Cached {} received emails", received_emails.len());
-                                }
-                            }
-                            
-                            // Fetch sent messages
-                            if let Ok(messages) = gmail_client.get_messages(&email, &access_token, Some("in:sent")).await {
+                                let sent_future = async {
+                                    if let Ok(messages) = gmail_client.get_messages_with_limit(&email, &access_token, Some("in:sent"), batch_size).await {
                                 let mut sent_emails = Vec::new();
-                                let limit = std::cmp::min(50, messages.len());
                                 
-                                for msg_id in &messages[0..limit] {
+                                        for msg_id in &messages {
                                     if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
                                         if let Some(email_obj) = process_gmail_message(&message, &email) {
-                                            let _ = redis_cache.cache_email(&email, &message.id, &email_obj).await;
-                                            sent_emails.push(email_obj.clone());
-                                            all_emails.push(email_obj);
+                                                    if email_obj.sender_email == email {
+                                                        sent_emails.push(email_obj);
+                                                    }
+                                                }
+                                            }
                                         }
+                                        
+                                        Some(sent_emails)
+                                    } else {
+                                        None
                                     }
+                                };
+                                
+                                // Execute futures concurrently
+                                let (inbox_result, sent_result) = tokio::join!(inbox_future, sent_future);
+                                
+                                if let Some(received) = inbox_result {
+                                    all_emails.extend(received);
+                                    
+                                    // Cache all received emails
+                                    redis_cache.cache_emails_paginated(&email, "received", &all_emails, None).await
+                                        .unwrap_or_else(|e| error!("Failed to cache received emails: {}", e));
                                 }
                                 
-                                if !sent_emails.is_empty() {
-                                    let _ = redis_cache.cache_emails(&email, "sent", &sent_emails).await;
-                                    info!("Cached {} sent emails", sent_emails.len());
+                                if let Some(sent) = sent_result {
+                                    // Clone before extending to keep a copy for caching
+                                    let sent_clone = sent.clone();
+                                    all_emails.extend(sent);
+                                    
+                                    // Cache all sent emails using the clone
+                                    redis_cache.cache_emails_paginated(&email, "sent", &sent_clone, None).await
+                                        .unwrap_or_else(|e| error!("Failed to cache sent emails: {}", e));
                                 }
-                            }
-                            
-                            // Sort and filter emails
-                            all_emails = apply_filters_to_emails(all_emails, &query);
-                            
-                            // Cache filtered results
-                            if !all_emails.is_empty() {
-                                let _ = redis_cache.cache_emails(&email, &cache_key, &all_emails).await;
-                            }
-                            
-                            return HttpResponse::Ok().json(json!({
+                                
+                                // Also cache the current query results
+                                redis_cache.cache_emails_paginated(&email, &filter_hash, &all_emails, None).await
+                                    .unwrap_or_else(|e| error!("Failed to cache filtered emails: {}", e));
+                                
+                                // Update last sync timestamp
+                                let current_time = chrono::Utc::now().timestamp();
+                                redis_cache.set_last_sync(&email).await
+                                    .unwrap_or_else(|e| error!("Failed to update last sync timestamp: {}", e));
+                                
+                                // Apply filters
+                                let filtered_emails = apply_filters_to_emails(all_emails, &query);
+                                
+                                // Calculate pagination
+                                let total_pages = (filtered_emails.len() + page_size - 1) / page_size;
+                                let start = page * page_size;
+                                let end = std::cmp::min(start + page_size, filtered_emails.len());
+                                let page_emails = if start < filtered_emails.len() {
+                                    filtered_emails[start..end].to_vec()
+                                } else {
+                                    Vec::new()
+                                };
+                                
+                                HttpResponse::Ok().json(json!({
                                 "success": true,
-                                "emails": all_emails,
-                                "source": "gmail"
-                            }));
+                                    "emails": page_emails,
+                                    "total_pages": total_pages,
+                                    "current_page": page,
+                                    "cached": false,
+                                    "last_sync": current_time
+                                }))
                         }
                         Err(e) => {
                             error!("Gmail token error: {}", e);
-                            // Fall back to cache
+                                HttpResponse::InternalServerError().json(json!({
+                                    "success": false,
+                                    "error": "Failed to get Gmail token",
+                                    "details": format!("{}", e)
+                                }))
+                            }
                         }
+                    } else {
+                        HttpResponse::BadRequest().json(json!({
+                            "success": false,
+                            "error": "No Gmail refresh token found"
+                        }))
                     }
                 }
-                
-                // Fall back to cache if Gmail API fails or no refresh token
-                if let Ok(Some(cached)) = redis_cache.get_cached_emails(&email, &cache_key).await {
-                    info!("Emails retrieved from cache");
-                        return HttpResponse::Ok().json(json!({
-                            "success": true,
-                        "emails": cached,
-                        "source": "cache"
-                    }));
-                }
-                
-                // Final fallback to database
-                info!("Fetching emails from database");
-                let received = match db::get_emails_for_user(db_pool.get_ref(), &email, false, Some(&query)).await {
-                    Ok(emails) => emails,
-                    Err(e) => {
-                        error!("Database error (received): {}", e);
-                        Vec::new()
-                    }
-                };
-                
-                let sent = match db::get_emails_for_user(db_pool.get_ref(), &email, true, Some(&query)).await {
-                    Ok(emails) => emails,
-                    Err(e) => {
-                        error!("Database error (sent): {}", e);
-                        Vec::new()
-                    }
-                };
-                
-                let all_emails = [sent, received].concat();
-                
-                return HttpResponse::Ok().json(json!({
-                    "success": true,
-                    "emails": all_emails,
-                    "source": "database"
-                }));
             }
             Ok(None) => {
-                error!("Invalid session token");
-                return HttpResponse::Unauthorized().json(json!({
+                error!("Invalid session");
+                HttpResponse::Unauthorized().json(json!({
                     "success": false,
                     "error": "Not authenticated"
-                }));
+                }))
             }
             Err(e) => {
                 error!("Database error: {}", e);
-                return HttpResponse::InternalServerError().json(json!({
+                HttpResponse::InternalServerError().json(json!({
                     "error": "Database error",
                     "details": format!("{}", e)
-                }));
+                }))
             }
         }
-    }
-    
+    } else {
     HttpResponse::Unauthorized().json(json!({
         "success": false,
         "error": "Not authenticated"
     }))
+    }
 }
 
 // Apply filters directly to a list of emails (for cached results)
@@ -464,66 +512,186 @@ pub async fn refresh_emails(
         
         match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
             Ok(Some((email, _, _, refresh_token))) => {
-                if let Some(refresh_token) = refresh_token {
+                info!("Manual refresh requested for user: {}", email);
+                
+                // If refresh token exists, get emails from Gmail
+                if let Some(refresh_token) = refresh_token.clone() {
                     match gmail_client.get_token(&email, &refresh_token).await {
                         Ok(access_token) => {
-                            // First, invalidate all cached data for this user
-                            let _ = redis_cache.invalidate_user_cache(&email).await;
-                            info!("Refreshing emails for {}", email);
+                            // We only need to fetch the most recent emails
+                            // For a refresh, we limit to the most recent 20 emails
+                            // This makes refresh much faster than a full sync
+                            const REFRESH_LIMIT: usize = 20;
                             
-                            let mut all_emails = Vec::new();
+                            // Get the timestamp of last sync to optimize refresh
+                            let _last_sync_timestamp = redis_cache.get_last_sync(&email).await.unwrap_or(None);
                             
-                            // Fetch inbox messages with newer_than filter
-                            if let Ok(messages) = gmail_client.get_messages(&email, &access_token, None).await {
+                            // Fetch inbox messages (most recent only)
+                            let received_future = async {
+                                if let Ok(messages) = gmail_client.get_messages_with_limit(&email, &access_token, None, REFRESH_LIMIT).await {
                                 let mut received_emails = Vec::new();
-                                let limit = std::cmp::min(50, messages.len());
-                                
-                                for msg_id in &messages[0..limit] {
-                                    if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
-                                        if let Some(email_obj) = process_gmail_message(&message, &email) {
-                                            let _ = redis_cache.cache_email(&email, &message.id, &email_obj).await;
-                                            received_emails.push(email_obj.clone());
-                                            all_emails.push(email_obj);
+                                    
+                                    // Use futures to process messages concurrently
+                                    use futures::{stream, StreamExt};
+                                    const CONCURRENT_REQUESTS: usize = 5;
+                                    
+                                    let message_stream = stream::iter(messages)
+                                        .map(|msg_id| {
+                                            let email_clone = email.clone();
+                                            let access_token_clone = access_token.clone();
+                                            let gmail_client_clone = gmail_client.clone();
+                                            
+                                            async move {
+                                                if let Ok(message) = gmail_client_clone.get_message_detail(&email_clone, &access_token_clone, &msg_id.id).await {
+                                                    if let Some(email_obj) = process_gmail_message(&message, &email_clone) {
+                                                        // Only include emails addressed to the user
+                                                        if email_obj.recipient_email == email_clone {
+                                                            Some(email_obj)
+                                                        } else {
+                                                            None
+                                                        }
+                                                    } else {
+                                                        None
+                                                    }
+                                                } else {
+                                                    None
+                                                }
+                                            }
+                                        })
+                                        .buffer_unordered(CONCURRENT_REQUESTS);
+                                    
+                                    let mut results = message_stream.collect::<Vec<_>>().await;
+                                    for result in results.drain(..) {
+                                        if let Some(email_obj) = result {
+                                            received_emails.push(email_obj);
                                         }
                                     }
+                                    
+                                    Some(received_emails)
+                                } else {
+                                    None
                                 }
-                                
-                                if !received_emails.is_empty() {
-                                    let _ = redis_cache.cache_emails(&email, "received", &received_emails).await;
-                                    info!("Cached {} received emails", received_emails.len());
-                                }
-                            }
+                            };
                             
-                            // Fetch sent messages
-                            if let Ok(messages) = gmail_client.get_messages(&email, &access_token, Some("in:sent")).await {
+                            // Fetch sent emails (most recent only)
+                            let sent_future = async {
+                                if let Ok(messages) = gmail_client.get_messages_with_limit(&email, &access_token, Some("in:sent"), REFRESH_LIMIT).await {
                                 let mut sent_emails = Vec::new();
-                                let limit = std::cmp::min(50, messages.len());
-                                
-                                for msg_id in &messages[0..limit] {
-                                    if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
-                                        if let Some(email_obj) = process_gmail_message(&message, &email) {
-                                            let _ = redis_cache.cache_email(&email, &message.id, &email_obj).await;
-                                            sent_emails.push(email_obj.clone());
-                                            all_emails.push(email_obj);
+                                    
+                                    // Use futures to process messages concurrently
+                                    use futures::{stream, StreamExt};
+                                    const CONCURRENT_REQUESTS: usize = 5;
+                                    
+                                    let message_stream = stream::iter(messages)
+                                        .map(|msg_id| {
+                                            let email_clone = email.clone();
+                                            let access_token_clone = access_token.clone();
+                                            let gmail_client_clone = gmail_client.clone();
+                                            
+                                            async move {
+                                                if let Ok(message) = gmail_client_clone.get_message_detail(&email_clone, &access_token_clone, &msg_id.id).await {
+                                                    if let Some(email_obj) = process_gmail_message(&message, &email_clone) {
+                                                        // Only include emails where user is the sender
+                                                        if email_obj.sender_email == email_clone {
+                                                            Some(email_obj)
+                                                        } else {
+                                                            None
+                                                        }
+                                                    } else {
+                                                        None
+                                                    }
+                                                } else {
+                                                    None
+                                                }
+                                            }
+                                        })
+                                        .buffer_unordered(CONCURRENT_REQUESTS);
+                                    
+                                    let mut results = message_stream.collect::<Vec<_>>().await;
+                                    for result in results.drain(..) {
+                                        if let Some(email_obj) = result {
+                                            sent_emails.push(email_obj);
                                         }
                                     }
+                                    
+                                    Some(sent_emails)
+                                } else {
+                                    None
                                 }
-                                
-                                if !sent_emails.is_empty() {
-                                    let _ = redis_cache.cache_emails(&email, "sent", &sent_emails).await;
-                                    info!("Cached {} sent emails", sent_emails.len());
+                            };
+                            
+                            // Execute both futures concurrently
+                            let (received_result, sent_result) = tokio::join!(received_future, sent_future);
+                            
+                            // Update cache with new emails
+                            let mut new_emails = Vec::new();
+                            
+                            if let Some(received) = received_result {
+                                // Get the existing cache
+                                if let Ok(Some((mut cached_received, _, _))) = redis_cache.get_cached_emails_paginated(&email, "received", 0, None).await {
+                                    // Create a set of existing ids for fast lookup
+                                    let existing_ids: std::collections::HashSet<String> = cached_received.iter()
+                                        .map(|e| e.id.clone())
+                                        .collect();
+                                    
+                                    // Add new emails to the beginning
+                                    for new_email in &received {
+                                        if !existing_ids.contains(&new_email.id) {
+                                            cached_received.insert(0, new_email.clone());
+                                            new_emails.push(new_email.clone());
+                                        }
+                                    }
+                                    
+                                    // Update the cache with a reasonable TTL (4 hours)
+                                    let cache_ttl = Some(4 * 60 * 60); // 4 hours in seconds
+                                    redis_cache.cache_emails_paginated(&email, "received", &cached_received, cache_ttl).await
+                                        .unwrap_or_else(|e| error!("Failed to update received emails cache: {}", e));
+                                } else {
+                                    // No existing cache, just cache the fetched emails
+                                    redis_cache.cache_emails_paginated(&email, "received", &received, None).await
+                                        .unwrap_or_else(|e| error!("Failed to cache received emails: {}", e));
+                                    new_emails.extend(received.clone());
                                 }
                             }
                             
-                            // Sort all emails by date
-                            all_emails.sort_by(|a, b| b.sent_at.cmp(&a.sent_at));
+                            if let Some(sent) = sent_result {
+                                // Get the existing cache
+                                if let Ok(Some((mut cached_sent, _, _))) = redis_cache.get_cached_emails_paginated(&email, "sent", 0, None).await {
+                                    // Create a set of existing ids for fast lookup
+                                    let existing_ids: std::collections::HashSet<String> = cached_sent.iter()
+                                        .map(|e| e.id.clone())
+                                        .collect();
+                                    
+                                    // Add new emails to the beginning
+                                    for new_email in &sent {
+                                        if !existing_ids.contains(&new_email.id) {
+                                            cached_sent.insert(0, new_email.clone());
+                                            new_emails.push(new_email.clone());
+                                        }
+                                    }
+                                    
+                                    // Update the cache with a reasonable TTL (4 hours)
+                                    let cache_ttl = Some(4 * 60 * 60); // 4 hours in seconds
+                                    redis_cache.cache_emails_paginated(&email, "sent", &cached_sent, cache_ttl).await
+                                        .unwrap_or_else(|e| error!("Failed to update sent emails cache: {}", e));
+                                } else {
+                                    // No existing cache, just cache the fetched emails
+                                    redis_cache.cache_emails_paginated(&email, "sent", &sent, None).await
+                                        .unwrap_or_else(|e| error!("Failed to cache sent emails: {}", e));
+                                    new_emails.extend(sent.clone());
+                                }
+                            }
                             
-                            info!("Email refresh complete. Total emails: {}", all_emails.len());
+                            // Update last sync timestamp
+                            let current_time = chrono::Utc::now().timestamp();
+                            redis_cache.set_last_sync(&email).await
+                                .unwrap_or_else(|e| error!("Failed to update last sync timestamp: {}", e));
+                            
                             return HttpResponse::Ok().json(json!({
                                 "success": true,
                                 "message": "Emails refreshed successfully",
-                                "emails": all_emails,
-                                "count": all_emails.len()
+                                "new_emails": new_emails.len(),
+                                "last_sync": current_time
                             }));
                         }
                         Err(e) => {
@@ -535,29 +703,34 @@ pub async fn refresh_emails(
                         }));
                         }
                     }
+                } else {
+                    return HttpResponse::BadRequest().json(json!({
+                        "success": false,
+                        "error": "No Gmail refresh token found"
+                    }));
                 }
             }
             Ok(None) => {
                 error!("Invalid session");
-                return HttpResponse::Unauthorized().json(json!({
+                HttpResponse::Unauthorized().json(json!({
                     "success": false,
                     "error": "Not authenticated"
-                }));
+                }))
             }
             Err(e) => {
                 error!("Database error: {}", e);
-                return HttpResponse::InternalServerError().json(json!({
+                HttpResponse::InternalServerError().json(json!({
                     "error": "Database error",
                     "details": format!("{}", e)
-                }));
+                }))
             }
         }
-    }
-    
+    } else {
     HttpResponse::Unauthorized().json(json!({
         "success": false,
         "error": "Not authenticated"
     }))
+    }
 }
 
 // Get a specific email by ID

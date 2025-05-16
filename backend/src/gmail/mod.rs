@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use serde_json::json;
-use crate::models::{GmailLabel, LabelColor};
+use crate::models::GmailLabel;
 
 // Gmail API token response
 #[derive(Debug, Deserialize)]
@@ -235,6 +235,51 @@ impl GmailClient {
 
         let messages = response_data.messages.unwrap_or_default();
         println!("Successfully fetched {} Gmail messages", messages.len());
+        
+        Ok(messages)
+    }
+
+    // Get emails from Gmail with a limit parameter
+    pub async fn get_messages_with_limit(
+        &self, 
+        user_id: &str, 
+        access_token: &str, 
+        query: Option<&str>, 
+        max_results: usize
+    ) -> Result<Vec<GmailMessageId>, ReqwestError> {
+        let query_param = query.unwrap_or(""); 
+        
+        // Build URL with maxResults parameter
+        let url = format!(
+            "https://gmail.googleapis.com/gmail/v1/users/{}/messages?q={}&maxResults={}",
+            user_id, query_param, max_results
+        );
+        
+        println!("Fetching Gmail messages with limit: {}", url);
+        
+        let response = match self.http_client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", access_token))
+            .send()
+            .await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    println!("Error fetching messages: {}", e);
+                    return Err(e);
+                }
+            };
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Could not get error text".to_string());
+            println!("Gmail API error: Status {} - {}", status, error_text);
+            return Err(self.http_client.get("error://example.com").send().await.unwrap_err());
+        }
+
+        let response_data: GmailMessageListResponse = response.json().await?;
+        let messages = response_data.messages.unwrap_or_default();
+        
+        println!("Successfully fetched {} Gmail messages (limited to {})", messages.len(), max_results);
         
         Ok(messages)
     }
@@ -550,7 +595,7 @@ fn extract_message_body(payload: &GmailPayload) -> String {
 }
 
 // Process a SendMessageResponse into basic components for creating Email objects
-pub fn process_send_message_response(message: &SendMessageResponse, from_email: &str, to_email: &str, 
+pub fn process_send_message_response(_message: &SendMessageResponse, from_email: &str, to_email: &str, 
                                    subject: &str, body: &str) -> (String, String, String, String, String) {
     // Return the components directly from the inputs, since SendMessageResponse doesn't have these fields
     (
