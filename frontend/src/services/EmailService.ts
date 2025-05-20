@@ -278,7 +278,7 @@ export const EmailService = {
   },
 
   // Get a specific email by ID
-  async getEmail(id: number): Promise<Email | null> {
+  async getEmail(id: string): Promise<Email | null> {
     try {
       console.log('Fetching email:', id);
       const response = await fetch(`${API_URL}/api/emails/${id}`, {
@@ -409,7 +409,7 @@ export const EmailService = {
       }
       
       // Fetch the specific email to make sure we get the latest version with updated labels
-      const email = await this.getEmail(parseInt(emailId));
+      const email = await this.getEmail(emailId);
       
       if (!email) {
         console.error('Could not find email to mark as read:', emailId);

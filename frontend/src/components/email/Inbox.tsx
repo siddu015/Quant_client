@@ -8,9 +8,11 @@ import EmailListItem from './EmailListItem';
 
 interface InboxProps {
   mode: 'inbox' | 'sent' | 'drafts' | 'quantum';
+  initialMessageId?: string | null;
+  onMessageClosed?: () => void;
 }
 
-const Inbox: React.FC<InboxProps> = ({ mode }) => {
+const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }) => {
   // State management
   const [emails, setEmails] = useState<Email[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
@@ -74,6 +76,13 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
       // Set last sync time
       if (result.lastSync) {
         setLastSync(result.lastSync);
+      } else {
+        // If backend didn't provide a lastSync time (e.g., new user)
+        // but emails were fetched (implies success), set it to now.
+        // Check if emails were actually fetched to avoid setting on empty initial state
+        if (mode === 'sent' ? result.sent.length > 0 : result.received.length > 0 || result.totalPages > 0) {
+            setLastSync(Math.floor(Date.now() / 1000));
+        }
       }
       
       // Set emails based on mode
@@ -86,6 +95,11 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
       }
       
       setInitialLoadDone(true);
+      
+      // If initialMessageId is set, load that email after emails are loaded
+      if (initialMessageId && emails.length > 0) {
+        loadEmailById(initialMessageId);
+      }
     } catch (err) {
       console.error('Error in fetchEmails:', err);
       setError('Failed to load emails. Please try again later.');
@@ -93,7 +107,7 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, userEmail, mode]);
+  }, [isAuthenticated, userEmail, mode, initialMessageId]);
 
   // Handle mode change efficiently using cached data
   useEffect(() => {
@@ -126,12 +140,39 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, userEmail]);
 
+  // Effect to handle initialMessageId
+  useEffect(() => {
+    if (initialMessageId && initialLoadDone) {
+      loadEmailById(initialMessageId);
+    }
+  }, [initialMessageId, initialLoadDone]);
+
+  // Function to load email by ID
+  const loadEmailById = useCallback(async (id: string) => {
+    try {
+      // Check if the email is already in our list
+      const existingEmail = emails.find(email => email.id === id);
+      
+      if (existingEmail) {
+        setSelectedEmail(existingEmail);
+        return;
+      }
+      
+      // If not found in current list, fetch it from API
+      const email = await EmailService.getEmail(id);
+      if (email) {
+        setSelectedEmail(email);
+      }
+    } catch (err) {
+      console.error('Error loading email by ID:', err);
+      setError('Failed to load the message. Please try again later.');
+    }
+  }, [emails]);
+
   // Calculate time since last sync
   const getTimeSinceSync = useCallback(() => {
     if (!lastSync) {
-      // Return current timestamp when there's no sync time to avoid showing "Never"
-      const now = new Date();
-      return now.toLocaleString();
+      return 'Never';
     }
     
     const now = Math.floor(Date.now() / 1000);
@@ -238,6 +279,14 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
   const handleRetry = useCallback(() => {
     fetchEmails(currentPage, true);
   }, [fetchEmails, currentPage]);
+
+  // Handle closing email detail view
+  const handleCloseDetail = useCallback(() => {
+    setSelectedEmail(null);
+    if (onMessageClosed) {
+      onMessageClosed();
+    }
+  }, [onMessageClosed]);
 
   // Render email list view
   const renderEmailList = () => (
@@ -374,7 +423,7 @@ const Inbox: React.FC<InboxProps> = ({ mode }) => {
     return (
       <EmailDetail 
         email={selectedEmail} 
-        onBack={handleBackToList} 
+        onBack={handleCloseDetail} 
       />
     );
   }

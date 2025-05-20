@@ -26,6 +26,13 @@ interface UserResponse {
   message?: string;
 }
 
+// Define a User type for the context
+interface User {
+  email: string | null;
+  name: string | null;
+  picture: string | null;
+}
+
 interface AuthContextType {
   isAuthenticated: boolean;
   userEmail: string | null;
@@ -34,6 +41,7 @@ interface AuthContextType {
   isLoading: boolean;
   checkAuthStatus: () => Promise<void>;
   logout: () => Promise<void>;
+  user: User | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -44,6 +52,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   checkAuthStatus: async () => {},
   logout: async () => {},
+  user: null,
 });
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -52,6 +61,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [userName, setUserName] = useState<string | null>(null);
   const [userPicture, setUserPicture] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
 
   const checkAuthStatus = async () => {
     try {
@@ -73,9 +83,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUserName(data.name);
         setUserPicture(sanitizeProfilePicture(data.picture));
 
+        // Set user object
         if (data.authenticated) {
+          setUser({
+            email: data.email,
+            name: data.name,
+            picture: sanitizeProfilePicture(data.picture)
+          });
           console.log('User is authenticated:', data.email);
         } else {
+          setUser(null);
           console.log('User is not authenticated:', data.message);
           throw new Error(data.message || 'Not authenticated');
         }
@@ -88,6 +105,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUserEmail(null);
       setUserName(null);
       setUserPicture(null);
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
@@ -121,6 +139,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUserEmail(null);
       setUserName(null);
       setUserPicture(null);
+      setUser(null);
 
       // Force reload to clear any cached state
       window.location.href = '/';
@@ -131,6 +150,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUserEmail(null);
       setUserName(null);
       setUserPicture(null);
+      setUser(null);
     }
   };
 
@@ -144,6 +164,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isLoading,
         checkAuthStatus,
         logout,
+        user,
       }}
     >
       {children}

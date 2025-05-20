@@ -95,11 +95,12 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
         </div>
         
         <div className="flex-grow min-w-0">
-          <div className="flex justify-between items-center">
-            <h3 className={`${
+          {/* Sender and Date */}
+          <div className="flex justify-between items-center mb-0.5">
+            <h3 className={`text-sm ${
               !email.read_at 
-                ? 'font-semibold text-white' 
-                : 'font-medium text-gray-300'
+                ? 'font-bold text-gray-100' 
+                : 'font-semibold text-gray-400'
             } truncate`}>
               {displayName}
             </h3>
@@ -108,11 +109,12 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
             </span>
           </div>
           
-          <div className="flex items-center">
-            <h4 className={`truncate ${
+          {/* Subject and Encrypted tag */}
+          <div className="flex items-center mb-1">
+            <h4 className={`text-sm truncate ${
               !email.read_at 
-                ? 'font-medium text-gray-100' 
-                : 'text-gray-300'
+                ? 'font-medium text-gray-200' 
+                : 'text-gray-400'
             }`}>
               {email.subject}
             </h4>
@@ -127,12 +129,13 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
             )}
           </div>
           
-          <p className={`truncate text-sm ${
+          {/* Body preview */}
+          <p className={`truncate text-xs ${
             !email.read_at 
-              ? 'text-gray-300' 
-              : 'text-gray-400'
+              ? 'text-gray-400' 
+              : 'text-gray-500'
           }`}>
-            {email.body.replace(/<[^>]*>/g, '').substring(0, 100)}
+            {email.subject} - {email.body.replace(/<[^>]*>/g, '').substring(0, 100)}
             {email.body.length > 100 ? '...' : ''}
           </p>
         </div>

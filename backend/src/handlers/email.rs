@@ -6,9 +6,8 @@ use log::{info, error, warn};
 
 use crate::db;
 use crate::models::SendEmailRequest;
-use crate::gmail::{GmailClient, parse_gmail_message, GmailMessage, process_send_message_response};
+use crate::gmail::{GmailClient, parse_gmail_message, GmailMessage};
 use crate::cache::RedisCache;
-use crate::models::SortField;
 
 type DbPool = web::Data<sqlx::PgPool>;
 type GmailClientData = web::Data<std::sync::Arc<GmailClient>>;
@@ -30,7 +29,7 @@ pub async fn send_email(
                 if let Some(refresh_token) = refresh_token {
                     // Check if encryption is requested
                     let should_encrypt = email_req.encrypt.unwrap_or(false);
-                    let (subject, body, raw_encrypted_content) = if should_encrypt {
+                    let (_, _, raw_encrypted_content) = if should_encrypt {
                         // Get recipient's public key
                         match crate::encryption::keys::get_public_key(db_pool.get_ref(), &email_req.recipient_email).await {
                             Ok(Some(public_key)) => {
@@ -97,13 +96,53 @@ pub async fn send_email(
                         (email_req.subject.clone(), email_req.body.clone(), None)
                     };
                     
+                    // Store original message in database
+                    let email_id = match db::store_email(
+                        db_pool.get_ref(),
+                        &email,
+                        &email,
+                        &email_req.recipient_email,
+                        &email_req.subject,
+                        &email_req.body,
+                        should_encrypt,
+                        raw_encrypted_content.as_deref(),
+                    ).await {
+                        Ok(id) => id,
+                        Err(e) => {
+                            error!("Database error: {}", e);
+                            return HttpResponse::InternalServerError().json(json!({
+                                "success": false,
+                                "error": "Failed to store email in database",
+                                "details": format!("{}", e)
+                            }));
+                        }
+                    };
+                    
+                    // Generate view link for the notification email
+                    let view_link = format!("{}/?view={}", crate::auth::FRONTEND_URL, email_id);
+                    
+                    // Get sender's name from database
+                    let sender_name = match db::get_user_info(db_pool.get_ref(), &email).await {
+                        Ok(Some(user_info)) => user_info.name.unwrap_or_else(|| email.clone()),
+                        _ => email.clone(), // Fallback to email if user info not available
+                    };
+                    
+                    // Create placeholder message for Gmail notification
+                    let placeholder_subject = format!("[Quant Client] New secure message from {}", sender_name);
+                    let placeholder_body = format!(
+                        "You've received a new message from **{}** via Quant Client.\n\n\
+                        To view the full message, please click here: [Quant Client]({})\n\n\
+                        This is a notification email. The actual message content is securely stored in Quant Client.",
+                        sender_name, view_link
+                    );
+                    
                     let raw_message = encode_config(
                         format!(
                             "From: {}\r\nTo: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=UTF-8\r\nMIME-Version: 1.0\r\n\r\n{}",
                             email,
                             email_req.recipient_email,
-                            subject,
-                            body
+                            placeholder_subject,
+                            placeholder_body
                         ),
                         STANDARD
                     );
@@ -112,60 +151,41 @@ pub async fn send_email(
                         Ok(access_token) => {
                             match gmail_client.send_message(&email, &access_token, raw_message).await {
                                 Ok(message) => {
-                                    // Create email object using SendMessageResponse processor
-                                    let (subj, sender, sender_name, recipient, msg_body) = 
-                                        process_send_message_response(&message, &email, &email_req.recipient_email, &subject, &body);
-                                    
-                                    if !sender.is_empty() && !recipient.is_empty() {
-                                        // Create a database-style email object
-                                        let is_encrypted = subj.contains("[Q-ENCRYPTED]");
-                                        let email_obj = crate::models::Email {
-                                            id: Uuid::new_v4().to_string(),
-                                            sender_id: sender.clone(),
-                                            sender_email: sender,
-                                            sender_name: Some(sender_name),
-                                            recipient_email: recipient,
-                                            subject: subj,
-                                            body: msg_body,
-                                            sent_at: chrono::Utc::now().to_rfc3339(), // Use current time for sent messages
-                                            read_at: None,
-                                            gmail_id: Some(message.id.clone()),
-                                            label_ids: message.label_ids.clone(),
-                                            is_encrypted,
-                                            raw_encrypted_content: None,
-                                        };
+                                    // Create email object based on our stored message
+                                    let email_obj = crate::models::Email {
+                                        id: email_id.clone(),
+                                        sender_id: email.clone(),
+                                        sender_email: email.clone(),
+                                        sender_name: None, // We could fetch this from user profile
+                                        recipient_email: email_req.recipient_email.clone(),
+                                        subject: email_req.subject.clone(),
+                                        body: email_req.body.clone(),
+                                        sent_at: chrono::Utc::now().to_rfc3339(),
+                                        read_at: None,
+                                        gmail_id: Some(message.id.clone()), // Store reference to notification email
+                                        label_ids: Some(vec!["SENT".to_string()]),
+                                        is_encrypted: should_encrypt,
+                                        raw_encrypted_content: raw_encrypted_content,
+                                    };
 
-                                        // Store in database
-                                        let _ = db::store_email(
-                                            db_pool.get_ref(),
-                                            &email,
-                                            &email,
-                                            &email_req.recipient_email,
-                                            &email_req.subject,
-                                            &email_req.body,
-                                            should_encrypt,
-                                            raw_encrypted_content.as_deref(),
-                                        ).await;
-
-                                        // Update cache
-                                        if let Err(e) = redis_cache.update_email_lists(&email, &email_obj, true).await {
-                                            error!("Failed to update cache: {}", e);
-                                        }
-
-                                        info!("Email sent and cached: {} -> {}", email, email_req.recipient_email);
-                                        
-                                        return HttpResponse::Ok().json(json!({
-                                            "success": true,
-                                            "email": email_obj,
-                                            "message": "Email sent successfully"
-                                        }));
+                                    // Update cache with our email object
+                                    if let Err(e) = redis_cache.update_email_lists(&email, &email_obj, true).await {
+                                        error!("Failed to update cache: {}", e);
                                     }
+
+                                    info!("Email sent and stored in database: {} -> {}", email, email_req.recipient_email);
+                                    
+                                    return HttpResponse::Ok().json(json!({
+                                        "success": true,
+                                        "email": email_obj,
+                                        "message": "Email sent successfully"
+                                    }));
                                 }
                                 Err(e) => {
                                     error!("Gmail API error: {}", e);
                                     return HttpResponse::InternalServerError().json(json!({
                                         "success": false,
-                                        "error": "Failed to send email",
+                                        "error": "Failed to send notification email",
                                         "details": format!("{}", e)
                                     }));
                                 }
@@ -210,204 +230,88 @@ pub async fn get_emails(
     req: HttpRequest,
     query: web::Query<crate::models::EmailFilter>,
     db_pool: DbPool,
-    gmail_client: GmailClientData,
-    redis_cache: RedisCacheData,
+    _gmail_client: GmailClientData,
+    _redis_cache: RedisCacheData,
 ) -> impl Responder {
     if let Some(cookie) = req.cookie("session") {
         let session_token = cookie.value().to_string();
         
         match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
-            Ok(Some((email, _, _, refresh_token))) => {
-                let page = query.page.unwrap_or(0) as usize;
-                let page_size = query.page_size.unwrap_or(50) as usize;
-                let force_refresh = query.force_refresh.unwrap_or(false);
+            Ok(Some((email, _, _, _))) => {
+                let filter = query.into_inner();
+                let force_refresh = filter.force_refresh.unwrap_or(false);
                 
-                info!("Fetching emails for user: {}, page: {}, page_size: {}, force_refresh: {}", 
-                      email, page, page_size, force_refresh);
+                // Get emails directly from our database
+                let mut all_emails = Vec::new();
                 
-                // Create cache key from filter parameters
-                let filter_hash = format!("{}:{}:{}:{}:{}:{}",
-                    query.label.as_deref().unwrap_or(""),
-                    query.is_read.unwrap_or(false),
-                    query.search.as_deref().unwrap_or(""),
-                    query.sender.as_deref().unwrap_or(""),
-                    query.recipient.as_deref().unwrap_or(""),
-                    query.sort_by.as_ref().map_or("", |s| match s {
-                        crate::models::SortField::Date => "date",
-                        crate::models::SortField::Sender => "sender",
-                        crate::models::SortField::Subject => "subject",
-                    })
-                );
-
-                // Try loading from cache if not forcing refresh
-                let mut _cached_hit = false;
-                let emails = if !force_refresh {
-                    match redis_cache.get_cached_emails_paginated(&email, &filter_hash, page, Some(page_size)).await {
-                        Ok(Some((emails, total_pages, cached_page))) => {
-                            info!("Cache hit for user {} with {} emails", email, emails.len());
-                            _cached_hit = true;
-                            Some((emails, total_pages, cached_page))
-                        }
-                        _ => None
-                    }
-                } else {
-                    None
-                };
-                
-                // Get the timestamp of last sync to optimize refresh
-                let _last_sync_timestamp = redis_cache.get_last_sync(&email).await.unwrap_or(None);
-                
-                if let Some((emails, total_pages, current_page)) = emails {
-                    // Cache hit - return the cached data with pagination info
-                    HttpResponse::Ok().json(json!({
-                        "success": true,
-                        "emails": emails,
-                        "total_pages": total_pages,
-                        "current_page": current_page,
-                        "cached": true,
-                        "last_sync": _last_sync_timestamp
-                    }))
-                } else {
-                    // Cache miss or force refresh - fetch from Gmail
-                    if let Some(refresh_token) = refresh_token {
-                    match gmail_client.get_token(&email, &refresh_token).await {
-                        Ok(access_token) => {
-                            let mut all_emails = Vec::new();
-                            
-                                // Get both inbox and sent messages concurrently with batching
-                                // Note: For pagination efficiency, we request more messages than we need
-                                // but only process the ones we need for the requested page
-                                let batch_size = page_size * 2; // Fetch more to have buffer
-                                
-                                let inbox_future = async {
-                                    if let Ok(messages) = gmail_client.get_messages_with_limit(&email, &access_token, None, batch_size).await {
-                                let mut received_emails = Vec::new();
-                                
-                                        for msg_id in &messages {
-                                    if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
-                                        if let Some(email_obj) = process_gmail_message(&message, &email) {
-                                                    if email_obj.recipient_email == email {
-                                                        received_emails.push(email_obj);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        
-                                        Some(received_emails)
-                                    } else {
-                                        None
-                                    }
-                                };
-                                
-                                let sent_future = async {
-                                    if let Ok(messages) = gmail_client.get_messages_with_limit(&email, &access_token, Some("in:sent"), batch_size).await {
-                                let mut sent_emails = Vec::new();
-                                
-                                        for msg_id in &messages {
-                                    if let Ok(message) = gmail_client.get_message_detail(&email, &access_token, &msg_id.id).await {
-                                        if let Some(email_obj) = process_gmail_message(&message, &email) {
-                                                    if email_obj.sender_email == email {
-                                                        sent_emails.push(email_obj);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        
-                                        Some(sent_emails)
-                                    } else {
-                                        None
-                                    }
-                                };
-                                
-                                // Execute futures concurrently
-                                let (inbox_result, sent_result) = tokio::join!(inbox_future, sent_future);
-                                
-                                if let Some(received) = inbox_result {
-                                    all_emails.extend(received);
-                                    
-                                    // Cache all received emails
-                                    redis_cache.cache_emails_paginated(&email, "received", &all_emails, None).await
-                                        .unwrap_or_else(|e| error!("Failed to cache received emails: {}", e));
-                                }
-                                
-                                if let Some(sent) = sent_result {
-                                    // Clone before extending to keep a copy for caching
-                                    let sent_clone = sent.clone();
-                                    all_emails.extend(sent);
-                                    
-                                    // Cache all sent emails using the clone
-                                    redis_cache.cache_emails_paginated(&email, "sent", &sent_clone, None).await
-                                        .unwrap_or_else(|e| error!("Failed to cache sent emails: {}", e));
-                                }
-                                
-                                // Also cache the current query results
-                                redis_cache.cache_emails_paginated(&email, &filter_hash, &all_emails, None).await
-                                    .unwrap_or_else(|e| error!("Failed to cache filtered emails: {}", e));
-                                
-                                // Update last sync timestamp
-                                let current_time = chrono::Utc::now().timestamp();
-                                redis_cache.set_last_sync(&email).await
-                                    .unwrap_or_else(|e| error!("Failed to update last sync timestamp: {}", e));
-                                
-                                // Apply filters
-                                let filtered_emails = apply_filters_to_emails(all_emails, &query);
-                                
-                                // Calculate pagination
-                                let total_pages = (filtered_emails.len() + page_size - 1) / page_size;
-                                let start = page * page_size;
-                                let end = std::cmp::min(start + page_size, filtered_emails.len());
-                                let page_emails = if start < filtered_emails.len() {
-                                    filtered_emails[start..end].to_vec()
-                                } else {
-                                    Vec::new()
-                                };
-                                
-                                HttpResponse::Ok().json(json!({
-                                "success": true,
-                                    "emails": page_emails,
-                                    "total_pages": total_pages,
-                                    "current_page": page,
-                                    "cached": false,
-                                    "last_sync": current_time
-                                }))
-                        }
-                        Err(e) => {
-                            error!("Gmail token error: {}", e);
-                                HttpResponse::InternalServerError().json(json!({
-                                    "success": false,
-                                    "error": "Failed to get Gmail token",
-                                    "details": format!("{}", e)
-                                }))
-                            }
-                        }
-                    } else {
-                        HttpResponse::BadRequest().json(json!({
-                            "success": false,
-                            "error": "No Gmail refresh token found"
-                        }))
+                // Get sent emails
+                match db::email::get_emails_for_user(db_pool.get_ref(), &email, true, Some(&filter)).await {
+                    Ok(sent) => {
+                        all_emails.extend(sent);
+                    },
+                    Err(e) => {
+                        error!("Database error retrieving sent emails: {}", e);
                     }
                 }
+                
+                // Get received emails
+                match db::email::get_emails_for_user(db_pool.get_ref(), &email, false, Some(&filter)).await {
+                    Ok(received) => {
+                        all_emails.extend(received);
+                    },
+                    Err(e) => {
+                        error!("Database error retrieving received emails: {}", e);
+                    }
+                }
+                
+                // Apply any additional filters from the request
+                let filtered_emails = apply_filters_to_emails(all_emails, &filter);
+                
+                // Create paginated response
+                let page = filter.page.unwrap_or(0);
+                let page_size = filter.page_size.unwrap_or(50);
+                
+                let total_items = filtered_emails.len();
+                let total_pages = (total_items as f64 / page_size as f64).ceil() as i32;
+                
+                let start = (page * page_size) as usize;
+                let end = (start + page_size as usize).min(filtered_emails.len());
+                
+                let emails_page = if start < filtered_emails.len() {
+                    filtered_emails[start..end].to_vec()
+                } else {
+                    Vec::new()
+                };
+                
+                return HttpResponse::Ok().json(json!({
+                    "success": true,
+                    "emails": emails_page,
+                    "totalPages": total_pages,
+                    "currentPage": page,
+                    "cached": !force_refresh,
+                    "message": "Emails retrieved from database",
+                }));
             }
             Ok(None) => {
-                error!("Invalid session");
-                HttpResponse::Unauthorized().json(json!({
+                return HttpResponse::Unauthorized().json(json!({
                     "success": false,
-                    "error": "Not authenticated"
-                }))
+                    "error": "Invalid session"
+                }));
             }
             Err(e) => {
                 error!("Database error: {}", e);
-                HttpResponse::InternalServerError().json(json!({
+                return HttpResponse::InternalServerError().json(json!({
+                    "success": false,
                     "error": "Database error",
                     "details": format!("{}", e)
-                }))
+                }));
             }
         }
     } else {
-    HttpResponse::Unauthorized().json(json!({
-        "success": false,
-        "error": "Not authenticated"
-    }))
+        return HttpResponse::Unauthorized().json(json!({
+            "success": false,
+            "error": "Not authenticated"
+        }));
     }
 }
 

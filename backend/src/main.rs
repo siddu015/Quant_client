@@ -1,11 +1,12 @@
 // Import section
-use actix_web::{web, App, HttpServer};
+use actix_web::{web, App, HttpServer, HttpResponse, Responder, HttpRequest};
 use actix_cors::Cors;
 use std::env;
 use dotenv::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use env_logger::Builder;
 use log::LevelFilter;
+use serde_json;
 
 // Import modules
 mod models;
@@ -58,6 +59,9 @@ async fn main() -> std::io::Result<()> {
     log::info!("Server starting on {}", bind_address);
     log::info!("Frontend URL: {}", auth::FRONTEND_URL);
 
+    // Database pool to be shared with app
+    let _db_pool = web::Data::new(pool.clone());
+
     // Start HTTP server
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -99,8 +103,53 @@ async fn main() -> std::io::Result<()> {
             // Encryption routes
             .route("/api/keys/generate", web::post().to(handlers::generate_encryption_keys))
             .route("/api/emails/{id}/decrypt", web::get().to(handlers::decrypt_email))
+
+            // Debug routes
+            .route("/api/debug/quantum", web::post().to(toggle_quantum_debug))
     })
         .bind(&bind_address)?
         .run()
         .await
+}
+
+// Add the handler function for toggling quantum debug mode
+async fn toggle_quantum_debug(
+    req: HttpRequest, 
+    body: web::Json<serde_json::Value>,
+    db_pool: web::Data<sqlx::PgPool>
+) -> impl Responder {
+    // Only admins should be able to toggle debug mode
+    if let Some(cookie) = req.cookie("session") {
+        let session_token = cookie.value().to_string();
+        
+        // Check if the request has a valid user session
+        match db::get_user_by_session(db_pool.get_ref(), &session_token).await {
+            Ok(Some((email, _, _, _))) => {
+                // Get enabled status from request body
+                let enabled = body.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+                
+                // Set the debug mode
+                encryption::set_debug_mode(enabled);
+                
+                log::info!("Quantum debug mode toggled to {} by {}", enabled, email);
+                
+                HttpResponse::Ok().json(serde_json::json!({
+                    "success": true,
+                    "message": format!("Quantum debug mode set to: {}", if enabled { "enabled" } else { "disabled" }),
+                    "debug_mode": enabled
+                }))
+            },
+            _ => {
+                HttpResponse::Unauthorized().json(serde_json::json!({
+                    "success": false,
+                    "error": "Not authenticated"
+                }))
+            }
+        }
+    } else {
+        HttpResponse::Unauthorized().json(serde_json::json!({
+            "success": false,
+            "error": "Not authenticated"
+        }))
+    }
 }

@@ -120,7 +120,7 @@ pub async fn auth_google_callback(
                                         println!("Redirecting to frontend: {}", auth::FRONTEND_URL);
                                         HttpResponse::Found()
                                             .cookie(cookie)
-                                            .append_header(("Location", auth::FRONTEND_URL.clone()))
+                                            .append_header(("Location", auth::FRONTEND_URL))
                                             .finish()
                                     },
                                     Err(e) => {

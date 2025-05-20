@@ -1,157 +1,77 @@
 # Quantum Email Client
 
-## Introduction
-
-Quantum Email Client is a next-generation secure email application that integrates Gmail's functionality with post-quantum cryptography. It provides a sleek, dark-themed user interface for managing emails while adding a layer of quantum-resistant encryption for enhanced security against future quantum computing threats.
+A secure email application integrating Gmail with post-quantum cryptography, providing protection against future quantum computing threats.
 
 ## Features
 
-- **Gmail Integration**: Seamless login and access to Gmail accounts
-- **Post-Quantum Encryption**: Uses CRYSTALS-Kyber algorithm for quantum-resistant message encryption
-- **Dark Theme UI**: Modern, eye-friendly dark interface for comfortable email management
-- **Real-time Communication**: WebSocket implementation for instant email notifications
-- **Efficient Caching**: Redis-based caching system for improved performance
-- **Email Management**: Compose, send, receive, and organize emails with Gmail label support
-- **Secure Authentication**: OAuth2 integration with Google for secure access
+- Gmail integration with quantum-resistant encryption (CRYSTALS-Kyber)
+- Dark-themed UI with modern email management
+- Real-time notifications via WebSockets
+- Redis caching for performance optimization
 
-## Technology Stack
+## Tech Stack
 
-### Backend
+**Backend:** Rust, Actix-Web, Tokio, PostgreSQL, Redis  
+**Frontend:** React, TypeScript, TailwindCSS  
+**Security:** CRYSTALS-Kyber (post-quantum cryptography)
 
-- **Rust**: High-performance, memory-safe programming language
-- **Actix-Web**: Asynchronous web framework
-- **Tokio**: Async runtime for concurrent processing
-- **PostgreSQL**: Persistent data storage
-- **Redis**: Email and message ID caching
-- **CRYSTALS-Kyber**: Post-quantum cryptographic algorithm
-
-### Frontend
-
-- **React**: Component-based UI library
-- **TypeScript**: Type-safe JavaScript
-- **TailwindCSS**: Utility-first CSS framework
-- **React Router**: Client-side routing
-- **React Context API**: State management
-
-## Getting Started
+## Quick Setup
 
 ### Prerequisites
 
 - Rust (latest stable)
 - Node.js (v16+)
-- PostgreSQL
-- Redis
+- PostgreSQL (v14+)
+- Redis (v6+)
 - Google API credentials
 
-### Backend Setup
+### Database Setup
 
-1. Navigate to the backend directory:
+```bash
+# Create PostgreSQL database
+sudo -u postgres psql
+CREATE DATABASE quant_client;
+CREATE USER siddu WITH PASSWORD 'postgres';
+GRANT ALL PRIVILEGES ON DATABASE quant_client TO siddu;
+```
 
-   ```bash
-   cd backend
-   ```
+### Backend
 
-2. Create a `.env` file with the following variables:
+```bash
+cd backend
 
-   ```
-   DATABASE_URL=postgres://username:password@localhost/quantum_email
-   REDIS_URL=redis://localhost:6379
-   GOOGLE_CLIENT_ID=your_client_id
-   GOOGLE_CLIENT_SECRET=your_client_secret
-   REDIRECT_URL=http://localhost:3000/auth/callback
-   ```
+# Run main application
+cargo run --bin quantum-email-backend
 
-3. Install dependencies and run:
-   ```bash
-   cargo run
-   ```
+# Run quantum encryption demo
+cargo run --bin demo_quantum
+```
 
-### Frontend Setup
+### Frontend
 
-1. Navigate to the frontend directory:
-
-   ```bash
-   cd frontend
-   ```
-
-2. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-3. Create a `.env` file with:
-
-   ```
-   REACT_APP_API_URL=http://localhost:8080
-   ```
-
-4. Start the development server:
-   ```bash
-   npm start
-   ```
+```bash
+cd frontend
+npm install
+npm start
+# Access at http://localhost:3000
+```
 
 ## Project Structure
 
 ```
 quantum-email-client/
 ├── backend/               # Rust backend application
-│   ├── src/
-│   │   ├── auth/          # Authentication handlers
-│   │   ├── cache/         # Redis caching implementation
-│   │   ├── db/            # Database connections and queries
-│   │   ├── encryption/    # Quantum encryption algorithms
-│   │   ├── gmail/         # Gmail API integration
-│   │   ├── handlers/      # API request handlers
-│   │   ├── models/        # Data models
-│   │   └── main.rs        # Application entry point
+│   ├── src/               # Application source code
 │   └── Cargo.toml         # Rust dependencies
 │
 ├── frontend/              # React TypeScript frontend
-│   ├── src/
-│   │   ├── components/    # Reusable UI components
-│   │   ├── context/       # React context providers
-│   │   ├── pages/         # Application pages
-│   │   ├── services/      # API communication
-│   │   ├── types/         # TypeScript type definitions
-│   │   └── utils/         # Utility functions
+│   ├── src/               # Application source code
 │   └── package.json       # JavaScript dependencies
 ```
 
-## Redis Setup for Email Caching
+## Troubleshooting
 
-For the email caching functionality, you'll need to install and run Redis:
-
-### Installing Redis
-
-#### Mac
-
-```bash
-brew install redis
-```
-
-#### Ubuntu/Debian
-
-```bash
-sudo apt-get update
-sudo apt-get install redis-server
-```
-
-#### Windows
-
-Download and install Redis from: https://github.com/microsoftarchive/redis/releases
-
-### Starting Redis
-
-```bash
-# Mac/Linux
-redis-server
-
-# Windows (after installation)
-# Redis should be running as a service automatically
-```
-
-### Configuring Redis URL
-
-The application expects Redis to be available at `redis://localhost:6379`.
-You can modify this by changing the `REDIS_URL` in the `.env` file.
+- **Port conflicts**: Add `PORT=8081` to your `.env` file
+- **Connection errors**: Ensure PostgreSQL and Redis are running
+- **Frontend issues**: Verify backend is running and API URL is correct
+- **Quantum Demo**: Uses simulation mode for encryption visualization

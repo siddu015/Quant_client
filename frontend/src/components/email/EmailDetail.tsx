@@ -1,5 +1,5 @@
 // EmailDetail.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Email } from '../../types/Email';
 import { useAuth } from '../../context/AuthContext';
 import ReactMarkdown from 'react-markdown';
@@ -7,9 +7,84 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 
+// Decryption Visualization Component
+const DecryptionVisualizer: React.FC = () => {
+  const [animationStep, setAnimationStep] = useState(0);
+  const [cipherLines, setCipherLines] = useState<string[]>([]);
+  
+  useEffect(() => {
+    // Generate random binary data for visualization
+    const lines: string[] = [];
+    for(let i = 0; i < 5; i++) {
+      let line = '';
+      for(let j = 0; j < 40; j++) {
+        line += Math.random() > 0.5 ? '1' : '0';
+      }
+      lines.push(line);
+    }
+    setCipherLines(lines);
+    
+    // Animation loop
+    const timer = setInterval(() => {
+      setAnimationStep(prev => (prev + 1) % 15);
+    }, 200);
+    
+    return () => clearInterval(timer);
+  }, []);
+  
+  return (
+    <div className="bg-black/40 rounded-xl p-4 my-4 font-mono text-xs">
+      <div className="flex justify-between items-center mb-2">
+        <div className="text-purple-400 font-bold">QUANTUM DECRYPTION IN PROGRESS</div>
+        <div className="text-green-400">{Math.min(Math.round(animationStep * 7.5), 100)}%</div>
+      </div>
+      
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <div className="text-blue-400 mb-1">ENCRYPTED CIPHERTEXT</div>
+          {cipherLines.map((line, idx) => (
+            <div key={`cipher-${idx}`} className="text-blue-300 font-mono overflow-hidden">
+              {line}
+            </div>
+          ))}
+        </div>
+        
+        <div className="space-y-1 border-l border-gray-700 pl-4">
+          <div className="text-green-400 mb-1">DECRYPTION PROCESS</div>
+          {cipherLines.map((line, idx) => (
+            <div key={`plain-${idx}`} className="text-green-300 font-mono overflow-hidden">
+              {/* Gradually reveal "decrypted" text based on animation step */}
+              {animationStep > idx * 2 ? 
+                Array(line.length).fill(0).map((_, i) => 
+                  i < ((animationStep - idx * 2) * 5) ? 
+                    (Math.random() > 0.5 ? 'A' : (Math.random() > 0.5 ? 'T' : (Math.random() > 0.5 ? 'G' : 'C'))) : 
+                    line[i]
+                ).join('') 
+                : line}
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <div className="mt-4 pt-2 border-t border-gray-700 text-center">
+        <div className="text-xs text-gray-400">Using Kyber-768 Post-Quantum Cryptography</div>
+        <div className="flex justify-center space-x-1 mt-2">
+          {Array(10).fill(0).map((_, i) => (
+            <div 
+              key={i} 
+              className={`h-1 w-4 rounded ${i < animationStep / 1.5 ? 'bg-green-500' : 'bg-gray-700'}`}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface EmailDetailProps {
   email: Email;
   onBack: () => void;
+  onClose?: () => void;
 }
 
 const preprocessMarkdown = (content: string): string => {
@@ -153,7 +228,7 @@ const isMarketingEmail = (subject: string, body: string): boolean => {
   return hasMarketingSubject || hasMarketingBody || hasMarketingLayout;
 };
 
-const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
+const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onClose }) => {
   const { userEmail } = useAuth();
   const isSentEmail = email.sender_email === userEmail;
   const [isDecrypting, setIsDecrypting] = useState(false);
@@ -209,6 +284,10 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
   const handleDecrypt = async () => {
     try {
       setIsDecrypting(true);
+      
+      // Add a small delay to allow the animation to be seen
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      
       const response = await fetch(`http://localhost:8080/api/emails/${email.id}/decrypt`, {
         method: 'GET',
         credentials: 'include',
@@ -254,21 +333,37 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
           <span>Back</span>
         </button>
         
-        {email.is_encrypted && !decryptedEmail && (
-          <button
-            onClick={handleDecrypt}
-            disabled={isDecrypting}
-            className={`bg-indigo-800/60 hover:bg-indigo-700/60 text-indigo-100 px-3 py-2 rounded-xl transition-all duration-200 flex items-center gap-2 ${isDecrypting ? 'opacity-70 cursor-not-allowed' : ''}`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
-            </svg>
-            <span>{isDecrypting ? 'Decrypting...' : 'Decrypt Message'}</span>
-          </button>
-        )}
+        <div className="flex space-x-2">
+          {email.is_encrypted && !decryptedEmail && (
+            <button
+              onClick={handleDecrypt}
+              disabled={isDecrypting}
+              className={`bg-indigo-800/60 hover:bg-indigo-700/60 text-indigo-100 px-3 py-2 rounded-xl transition-all duration-200 flex items-center gap-2 ${isDecrypting ? 'opacity-70 cursor-not-allowed' : ''}`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+              </svg>
+              <span>{isDecrypting ? 'Decrypting...' : 'Decrypt Message'}</span>
+            </button>
+          )}
+          
+          {/* Close button if onClose is provided */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="bg-gray-800/60 hover:bg-gray-700/60 text-gray-200 p-2 rounded-xl transition-all duration-200 hover:shadow-lg flex items-center gap-2"
+              aria-label="Close"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              <span>Close</span>
+            </button>
+          )}
+        </div>
       </div>
       
-      {/* Email metadata */}
+      {/* Email content */}
       <div className="p-6 border-b border-gray-700/30">
         <div className="flex items-start gap-4">
           <div className={`flex-shrink-0 w-12 h-12 ${senderAvatarColor} rounded-full flex items-center justify-center text-white text-xl font-medium shadow-lg`}>
@@ -307,23 +402,28 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack }) => {
       
       {/* Email content */}
       <div className="custom-scrollbar p-6 overflow-y-auto flex-grow bg-gradient-to-b from-gray-900/20 to-gray-800/20">
-        {/* Determine if we're dealing with a marketing email (likely HTML) or regular text */}
-        {isMarketingEmail(displayEmail.subject, displayEmail.body) ? (
-          // For marketing emails, wrap in a div with the html-email class for styling
-          <div 
-            className="html-email" 
-            dangerouslySetInnerHTML={{ __html: displayEmail.body }} 
-          />
-        ) : (
-          // For regular emails, use markdown parser with proper styling
-          <div className="email-content">
-            <ReactMarkdown
-              rehypePlugins={[rehypeRaw, rehypeSanitize]}
-              remarkPlugins={[remarkGfm]}
-            >
-              {preprocessMarkdown(displayEmail.body)}
-            </ReactMarkdown>
-          </div>
+        {/* Show decryption visualizer when decrypting */}
+        {isDecrypting && <DecryptionVisualizer />}
+        
+        {/* Hide actual email content during decryption */}
+        {!isDecrypting && (
+          isMarketingEmail(displayEmail.subject, displayEmail.body) ? (
+            // For marketing emails, wrap in a div with the html-email class for styling
+            <div 
+              className="html-email" 
+              dangerouslySetInnerHTML={{ __html: displayEmail.body }} 
+            />
+          ) : (
+            // For regular emails, use markdown parser with proper styling
+            <div className="email-content">
+              <ReactMarkdown
+                rehypePlugins={[rehypeRaw, rehypeSanitize]}
+                remarkPlugins={[remarkGfm]}
+              >
+                {preprocessMarkdown(displayEmail.body)}
+              </ReactMarkdown>
+            </div>
+          )
         )}
       </div>
     </div>

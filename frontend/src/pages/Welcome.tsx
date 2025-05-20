@@ -26,8 +26,6 @@ function Welcome() {
         }
     ];
 
-
-
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
             setMousePosition({ x: e.clientX, y: e.clientY });
@@ -103,7 +101,7 @@ function Welcome() {
     };
 
     return (
-        <div className="min-h-screen flex flex-col bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 relative overflow-hidden">
+        <div className="min-h-screen flex flex-col bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 relative overflow-hidden font-sans">
             {/* Quantum Particle Effects */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 {/* Quantum tunneling effect */}
@@ -201,15 +199,6 @@ function Welcome() {
                     </div>
                     <h1 className="text-xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">Quantum Email</h1>
                 </div>
-                <button
-                    onClick={handleGoogleLogin}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center hover:scale-105 hover:shadow-lg hover:shadow-blue-500/25"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
-                    </svg>
-                    Sign in with Google
-                </button>
             </header>
             <main className="flex-grow flex flex-col items-center px-4">
                 <div className="h-[90vh] flex items-center justify-center">
@@ -222,15 +211,6 @@ function Welcome() {
                         Protect your communications with the power of quantum computing.
                     </p>
                     <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                        <button
-                            onClick={handleGoogleLogin}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg text-lg font-medium transition-all duration-200 flex items-center justify-center hover:scale-105 hover:shadow-lg hover:shadow-blue-500/25 group"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
-                            </svg>
-                            Get Started with Google
-                        </button>
                         <button 
                             onClick={scrollToAbout}
                             className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg text-lg font-medium transition-colors duration-200 flex items-center group"

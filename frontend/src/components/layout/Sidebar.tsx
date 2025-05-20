@@ -3,11 +3,12 @@ import { useAuth } from '../../context/AuthContext';
 import ProfileImage from '../ui/ProfileImage';
 
 interface SidebarProps {
-  activeSection: 'inbox' | 'sent' | 'drafts' | 'quantum';
-  onSectionChange: (section: 'inbox' | 'sent' | 'drafts' | 'quantum') => void;
+  activeSection: 'inbox' | 'sent' | 'drafts';
+  onSectionChange: (section: 'inbox' | 'sent' | 'drafts') => void;
+  draftsCount?: number;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange, draftsCount = 0 }) => {
   const { userEmail, userName, userPicture } = useAuth();
 
   return (
@@ -69,31 +70,23 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           <li>
             <button
               onClick={() => onSectionChange('drafts')}
-              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${
                 activeSection === 'drafts'
                   ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
                   : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
               }`}
             >
+              <div className="flex items-center">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
               Drafts
-            </button>
-          </li>
-          <li>
-            <button
-              onClick={() => onSectionChange('quantum')}
-              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
-                activeSection === 'quantum'
-                  ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
-                  : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              Quantum
+              </div>
+              {draftsCount > 0 && (
+                <span className="bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-full min-w-[1.5rem] text-center">
+                  {draftsCount}
+                </span>
+              )}
             </button>
           </li>
         </ul>

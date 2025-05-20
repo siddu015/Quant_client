@@ -87,3 +87,26 @@ pub async fn list_users(pool: &PgPool) -> Result<Vec<(String, Option<String>)>, 
         r.get("name"),
     )).collect())
 }
+
+// Get user info by email
+pub async fn get_user_info(
+    pool: &PgPool,
+    email: &str,
+) -> Result<Option<crate::models::GoogleUserInfo>, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT email, name, picture, refresh_token FROM users
+        WHERE email = $1
+        "#
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await?;
+    
+    Ok(row.map(|r| crate::models::GoogleUserInfo {
+        email: r.get("email"),
+        name: r.get("name"),
+        picture: r.get("picture"),
+        refresh_token: r.get("refresh_token"),
+    }))
+}

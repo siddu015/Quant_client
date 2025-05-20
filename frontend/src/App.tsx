@@ -1,5 +1,5 @@
 // App.tsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import './App.css';
 import { Welcome, Dashboard } from './pages';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -7,8 +7,18 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 // Wrapper component to handle routing based on authentication
 const AppRouter = () => {
     const { isAuthenticated, isLoading, userEmail } = useAuth();
+    const [messageToView, setMessageToView] = useState<string | null>(null);
 
     useEffect(() => {
+        // Parse URL parameters to check for view parameter
+        const params = new URLSearchParams(window.location.search);
+        const viewParam = params.get('view');
+        if (viewParam) {
+            setMessageToView(viewParam);
+            // Clear the parameter from URL to avoid reopening the same message
+            window.history.replaceState(null, '', window.location.pathname);
+        }
+        
         console.log('Auth state changed:', { isAuthenticated, isLoading, userEmail, currentPath: window.location.pathname });
     }, [isAuthenticated, isLoading, userEmail]);
 
@@ -29,7 +39,7 @@ const AppRouter = () => {
             console.log('Updating URL to /dashboard');
             window.history.replaceState(null, '', '/dashboard');
         }
-        return <Dashboard />;
+        return <Dashboard initialMessageId={messageToView} />;
     }
 
     // If not authenticated, always show welcome page
