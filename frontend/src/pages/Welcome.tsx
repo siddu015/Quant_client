@@ -101,7 +101,7 @@ function Welcome() {
     };
 
     return (
-        <div className="min-h-screen flex flex-col bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 relative overflow-hidden font-sans">
+        <div className="min-h-screen flex flex-col bg-gradient-to-b from-black via-gray-950 to-black relative overflow-hidden font-sans">
             {/* Quantum Particle Effects */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 {/* Quantum tunneling effect */}
@@ -178,13 +178,13 @@ function Welcome() {
                     ))}
                 </div>
             </div>
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(59,130,246,0.1),transparent_70%)] pointer-events-none blur-3xl"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(107,114,128,0.05),transparent_70%)] pointer-events-none blur-3xl"></div>
             {/* Back to Top Button */}
             <button
                 onClick={scrollToTop}
                 aria-label="Scroll to top of page"
                 title="Back to top"
-                className={`fixed bottom-8 right-8 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 z-50 ${showBackToTop ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}
+                className={`fixed bottom-8 right-8 bg-gray-700 hover:bg-gray-600 text-white p-3 rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 z-50 ${showBackToTop ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}
             >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
@@ -192,18 +192,18 @@ function Welcome() {
             </button>
             <header className="p-6 flex justify-between items-center z-10 relative">
                 <div className="flex items-center">
-                    <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center mr-3">
+                    <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center mr-3">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         </svg>
                     </div>
-                    <h1 className="text-xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">Quantum Email</h1>
+                    <h1 className="text-xl font-bold bg-gradient-to-r from-gray-400 to-gray-600 bg-clip-text text-transparent">Quantum Email</h1>
                 </div>
-                <button 
+                <button
                     onClick={handleGoogleLogin}
-                    className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center group"
+                    className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center hover:scale-105 hover:shadow-lg hover:shadow-gray-500/25"
                 >
-                    <svg className="w-5 h-5 mr-2 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                         <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                         <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
@@ -217,7 +217,7 @@ function Welcome() {
                 <div className="h-[90vh] flex items-center justify-center">
                     <div className="max-w-4xl mx-auto text-center">
                     <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 animate-fade-in-up">
-                        Welcome to <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-purple-600 bg-clip-text text-transparent animate-gradient">Quantum Email</span>
+                        Welcome to <span className="bg-gradient-to-r from-gray-400 via-gray-500 to-gray-600 bg-clip-text text-transparent animate-gradient">Quantum Email</span>
                     </h1>
                     <p className="text-gray-400 text-lg md:text-xl mb-8 max-w-2xl mx-auto">
                         Experience the next generation of secure email with quantum encryption technology.
@@ -237,22 +237,22 @@ function Welcome() {
                     </div>
                 </div>
 
-                <div ref={aboutSectionRef} className="w-full max-w-6xl mx-auto px-8 py-24 min-h-[80vh] flex flex-col justify-center bg-gray-900/50 animate-on-scroll opacity-0 transform translate-y-4 transition-all duration-700">
+                <div ref={aboutSectionRef} className="w-full max-w-6xl mx-auto px-8 py-24 min-h-[80vh] flex flex-col justify-center bg-gray-950/50 animate-on-scroll opacity-0 transform translate-y-4 transition-all duration-700">
                     <h2 className="text-3xl font-bold text-white text-center mb-8">About Quantum Email</h2>
                     <div className="grid md:grid-cols-2 gap-12 px-4">
                         <div className="space-y-6">
-                            <div className="bg-gray-900 p-6 rounded-xl transform hover:scale-105 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/10">
+                            <div className="bg-gray-900 p-6 rounded-xl transform hover:scale-105 transition-all duration-300 hover:shadow-xl hover:shadow-gray-500/10">
                                 <h3 className="text-xl font-semibold text-white mb-3 flex items-center group">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-blue-500 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-gray-500 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                                     </svg>
                                     What is Quantum Email?
                                 </h3>
                                 <p className="text-gray-400 group-hover:text-gray-300 transition-colors">Quantum Email is a revolutionary communication platform that leverages quantum encryption technology to provide unbreakable security for your emails. Unlike traditional email services, we use quantum key distribution (QKD) to ensure that your messages remain private and secure, even against future quantum computer attacks.</p>
                             </div>
-                            <div className="bg-gray-900 p-6 rounded-xl transform hover:scale-105 transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/10">
+                            <div className="bg-gray-900 p-6 rounded-xl transform hover:scale-105 transition-all duration-300 hover:shadow-xl hover:shadow-gray-500/10">
                                 <h3 className="text-xl font-semibold text-white mb-3 flex items-center group">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-purple-500 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-gray-500 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                                     </svg>
                                     Why Choose Us?
@@ -261,18 +261,18 @@ function Welcome() {
                             </div>
                         </div>
                         <div className="space-y-6">
-                            <div className="bg-gray-900 p-6 rounded-xl transform hover:scale-105 transition-all duration-300 hover:shadow-xl hover:shadow-green-500/10">
+                            <div className="bg-gray-900 p-6 rounded-xl transform hover:scale-105 transition-all duration-300 hover:shadow-xl hover:shadow-gray-500/10">
                                 <h3 className="text-xl font-semibold text-white mb-3 flex items-center group">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-green-500 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-gray-500 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                                     </svg>
                                     How It Works
                                 </h3>
                                 <p className="text-gray-400 group-hover:text-gray-300 transition-colors">Our system uses quantum properties to generate and distribute encryption keys. When you send an email, the content is encrypted using these quantum-generated keys. Any attempt to intercept or measure these keys would alter their state, making it impossible for attackers to steal your information without detection.</p>
                             </div>
-                            <div className="bg-gray-900 p-6 rounded-xl transform hover:scale-105 transition-all duration-300 hover:shadow-xl hover:shadow-yellow-500/10">
+                            <div className="bg-gray-900 p-6 rounded-xl transform hover:scale-105 transition-all duration-300 hover:shadow-xl hover:shadow-gray-500/10">
                                 <h3 className="text-xl font-semibold text-white mb-3 flex items-center group">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-yellow-500 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-gray-500 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                     </svg>
                                     Real-Time Security
@@ -286,23 +286,23 @@ function Welcome() {
                 <div className="w-full max-w-6xl mx-auto px-4 py-16 min-h-[80vh] flex flex-col justify-center animate-on-scroll opacity-0 transform translate-y-4 transition-all duration-700">
                     <h2 className="text-3xl font-bold text-white text-center mb-8">Quantum vs Traditional Email Security</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-6xl mx-auto mt-8">
-                        <div className="bg-gray-900/80 backdrop-blur-sm p-8 rounded-xl transform hover:scale-105 transition-all duration-300 cursor-pointer h-full border border-gray-800 hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10">
+                        <div className="bg-gray-900/80 backdrop-blur-sm p-8 rounded-xl transform hover:scale-105 transition-all duration-300 cursor-pointer h-full border border-gray-800 hover:border-gray-600/50 hover:shadow-lg hover:shadow-gray-700/10">
                             <h3 className="text-2xl font-bold text-white mb-4 flex items-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mr-3 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mr-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                                 </svg>
                                 Real-time Security
                             </h3>
                             <div className="space-y-6">
-                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-blue-500/5 border border-gray-700/50">
-                                    <h4 className="text-blue-400 font-semibold mb-2">Current Protection</h4>
+                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-gray-600/5 border border-gray-700/50">
+                                    <h4 className="text-gray-400 font-semibold mb-2">Current Protection</h4>
                                     <p className="text-gray-400">Uses complex math problems that are hard for today's computers to solve. Like having a super complicated password that takes years to guess.</p>
                                 </div>
-                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-blue-500/5 border border-gray-700/50">
-                                    <h4 className="text-blue-400 font-semibold mb-2">How It Works</h4>
+                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-gray-600/5 border border-gray-700/50">
+                                    <h4 className="text-gray-400 font-semibold mb-2">How It Works</h4>
                                     <p className="text-gray-400">Scrambles your messages using mathematical locks (encryption). The security depends on how difficult these math problems are to solve.</p>
                                 </div>
-                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-blue-500/5 border border-gray-700/50">
+                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-gray-600/5 border border-gray-700/50">
                                     <h4 className="text-yellow-500 font-semibold mb-2 flex items-center">
                                         <span className="mr-2">⚠️</span>Future Risk
                                     </h4>
@@ -310,23 +310,23 @@ function Welcome() {
                                 </div>
                             </div>
                         </div>
-                        <div className="bg-gray-900/80 backdrop-blur-sm p-8 rounded-xl transform hover:scale-105 transition-all duration-300 cursor-pointer h-full border border-gray-800 hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10">
+                        <div className="bg-gray-900/80 backdrop-blur-sm p-8 rounded-xl transform hover:scale-105 transition-all duration-300 cursor-pointer h-full border border-gray-800 hover:border-gray-600/50 hover:shadow-lg hover:shadow-gray-700/10">
                             <h3 className="text-2xl font-bold text-white mb-4 flex items-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mr-3 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mr-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                                 </svg>
                                 Quantum Email Security
                             </h3>
                             <div className="space-y-6">
-                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-blue-500/5 border border-gray-700/50">
+                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-gray-600/5 border border-gray-700/50">
                                     <h4 className="text-green-400 font-semibold mb-2">Unbreakable Protection</h4>
                                     <p className="text-gray-400">Uses the laws of physics instead of math. It's like having a lock that physically breaks if someone tries to peek at it.</p>
                                 </div>
-                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-blue-500/5 border border-gray-700/50">
+                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-gray-600/5 border border-gray-700/50">
                                     <h4 className="text-green-400 font-semibold mb-2">Self-Protecting</h4>
                                     <p className="text-gray-400">If someone tries to intercept your message, the quantum properties automatically change, making the stolen information useless and alerting you immediately.</p>
                                 </div>
-                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-blue-500/5 border border-gray-700/50">
+                                <div className="p-4 bg-gray-800/80 backdrop-blur-sm rounded-lg hover:bg-gray-800 transition-all duration-200 hover:shadow-md hover:shadow-gray-600/5 border border-gray-700/50">
                                     <h4 className="text-green-500 font-semibold mb-2 flex items-center">
                                         <span className="mr-2">✓</span>Future-Proof
                                     </h4>
@@ -391,6 +391,10 @@ const styles = `
         --scroll-y: 0px;
     }
 
+    .font-sans {
+        font-family: 'Geist', sans-serif; /* Apply Geist font here */
+    }
+
     .interactive-particle {
         transition: transform 0.1s ease-out;
     }
@@ -428,6 +432,7 @@ const styles = `
         top: 50%;
         transform: translateY(-50%);
         animation: tunneling 4s ease-in-out infinite;
+        background-color: rgba(156, 163, 175, 0.3); /* Muted tunnel particle */
     }
 
     .tunnel-container .tunnel-barrier {
@@ -436,6 +441,7 @@ const styles = `
         width: 20%;
         height: 100%;
         animation: barrierPulse 4s ease-in-out infinite;
+        background-color: rgba(55, 65, 81, 0.2); /* Muted tunnel barrier */
     }
 
     /* Superposition states */
@@ -523,7 +529,7 @@ const styles = `
     }
 
     .quantum-particles .particle {
-        box-shadow: 0 0 15px 3px rgba(59, 130, 246, 0.3);
+        box-shadow: 0 0 15px 3px rgba(156, 163, 175, 0.2); /* Muted particle shadow */
     }
 
     /* Orbital rings */
@@ -531,7 +537,12 @@ const styles = `
     .orbital-1 { width: 200px; height: 200px; top: 60%; left: 70%; animation: rotate 25s linear infinite reverse; }
     .orbital-2 { width: 300px; height: 300px; top: 40%; left: 40%; animation: rotate 30s linear infinite; }
 
+    .orbital-ring {
+        border-color: rgba(156, 163, 175, 0.1); /* Muted orbital ring border */
+    }
+
     .orbital-ring .orbital-particle {
+        background-color: rgba(156, 163, 175, 0.3); /* Muted orbital particle */
         top: -2px;
         left: 50%;
         animation: glow 2s ease-in-out infinite;
@@ -544,13 +555,15 @@ const styles = `
     .entangled-3 { top: 15%; left: 65%; width: 180px; animation: entangle 22s ease-in-out infinite; animation-delay: -12s; }
     .entangled-4 { top: 75%; left: 45%; width: 140px; animation: entangle 17s ease-in-out infinite; animation-delay: -3s; }
 
-    .entangled-pair .entangled-particle-1 { left: 0; }
-    .entangled-pair .entangled-particle-2 { right: 0; }
+    .entangled-pair .entangled-particle-1,
+    .entangled-pair .entangled-particle-2 {
+        background-color: rgba(107, 114, 128, 0.2); /* Muted entangled particles */
+    }
     .entangled-pair .entangled-connector {
         left: 8px;
         top: 4px;
         right: 8px;
-        background: linear-gradient(90deg, rgba(74, 222, 128, 0.2), rgba(74, 222, 128, 0));
+        background: linear-gradient(90deg, rgba(107, 114, 128, 0.1), rgba(107, 114, 128, 0)); /* Muted connector */
     }
 
     /* Wave function collapse rings */
@@ -578,6 +591,42 @@ const styles = `
         50% { transform: translate(-50%, -50%) scale(1); opacity: 0.2; }
         100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
     }
+
+    /* Update particle colors in keyframes and direct styles if needed */
+    .tunnel-container .tunnel-particle {
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        animation: tunneling 4s ease-in-out infinite;
+        background-color: rgba(156, 163, 175, 0.3); /* Muted tunnel particle */
+    }
+
+    .tunnel-container .tunnel-barrier {
+        left: 40%;
+        top: 0;
+        width: 20%;
+        height: 100%;
+        animation: barrierPulse 4s ease-in-out infinite;
+        background-color: rgba(55, 65, 81, 0.2); /* Muted tunnel barrier */
+    }
+
+    .superposition-state .state-up,
+    .superposition-state .state-down {
+        background-color: rgba(156, 163, 175, 0.3); /* Muted superposition states */
+    }
+
+    .superposition-state .state-connector {
+        background-gradient: linear-gradient(to bottom, rgba(156, 163, 175, 0.2), transparent); /* Muted connector */
+    }
+
+    .energy-level .level-line {
+        background-gradient: linear-gradient(to right, rgba(107, 114, 128, 0.1), rgba(129, 140, 153, 0.1), rgba(107, 114, 128, 0.1));
+    }
+
+    .energy-level .electron {
+        background-color: rgba(107, 114, 128, 0.3); /* Muted electron */
+    }
+
 `;
 
 // Add styles to head
