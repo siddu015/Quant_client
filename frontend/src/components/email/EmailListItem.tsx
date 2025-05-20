@@ -5,17 +5,23 @@ import { Email } from '../../types/Email';
 interface EmailListItemProps {
   email: Email;
   onClick: () => void;
+  isSelected?: boolean;
 }
 
-const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
+const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick, isSelected }) => {
   // Memoize the formatted date to avoid recalculation on each render
   const formattedDate = useMemo(() => {
     try {
+      // If sent_at is empty or clearly invalid, return empty string
+      if (!email.sent_at || email.sent_at === 'Invalid Date Placeholder') {
+        return '';
+      }
+      
       const date = new Date(email.sent_at);
       
       // Check if timestamp is valid
       if (isNaN(date.getTime())) {
-        return 'Unknown date';
+        return '';
       }
       
       // Format date based on how recent it is
@@ -48,7 +54,7 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
       });
     } catch (e) {
       console.error('Error formatting date:', e);
-      return 'Unknown date';
+      return '';
     }
   }, [email.sent_at]);
 
@@ -80,13 +86,18 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
   // Check if email is encrypted
   const isEncrypted = email.is_encrypted || email.subject.includes("[Q-ENCRYPTED]");
 
+  // Check if email is a draft
+  const isDraft = email.is_draft;
+
   return (
     <div 
       onClick={onClick}
       className={`p-4 border-b border-gray-700/30 transition-all duration-150 ${
-        !email.read_at 
-          ? 'bg-gray-800/40 hover:bg-gray-700/60' 
-          : 'bg-gray-900/40 hover:bg-gray-800/60'
+        isSelected
+          ? 'bg-blue-900/30 hover:bg-blue-900/40'
+          : !email.read_at 
+            ? 'bg-gray-800/40 hover:bg-gray-700/60' 
+            : 'bg-gray-900/40 hover:bg-gray-800/60'
       }`}
     >
       <div className="flex items-center gap-4">
@@ -104,13 +115,22 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
             } truncate`}>
               {displayName}
             </h3>
-            <span className="text-xs text-gray-400 whitespace-nowrap ml-2">
-              {formattedDate}
-            </span>
+            <div className="flex items-center">
+              {isDraft && (
+                <span className="text-xs bg-yellow-900/60 text-yellow-300 py-0.5 px-2 rounded-full flex-shrink-0 mr-2">
+                  Draft
+                </span>
+              )}
+              {formattedDate && (
+                <span className="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">
+                  {formattedDate}
+                </span>
+              )}
+            </div>
           </div>
           
-          {/* Subject and Encrypted tag */}
-          <div className="flex items-center mb-1">
+          {/* Subject and Body Preview */}
+          <div className="flex items-center">
             <h4 className={`text-sm truncate ${
               !email.read_at 
                 ? 'font-medium text-gray-200' 
@@ -118,6 +138,16 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
             }`}>
               {email.subject}
             </h4>
+            {/* Separator and Body Preview */}
+            <span className={`text-sm ${!email.read_at ? 'text-gray-400' : 'text-gray-500'} mx-1 flex-shrink-0`}>-</span>
+            <p className={`truncate text-xs ${
+              !email.read_at 
+                ? 'text-gray-400' 
+                : 'text-gray-500'
+            }`}>
+              {email.body.replace(/<[^>]*>/g, '').substring(0, 100)}
+              {email.body.length > 100 ? '...' : ''}
+            </p>
             
             {isEncrypted && (
               <span className="ml-2 text-xs bg-indigo-900/60 text-indigo-300 py-0.5 px-2 rounded-full flex-shrink-0">
@@ -128,16 +158,6 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
               </span>
             )}
           </div>
-          
-          {/* Body preview */}
-          <p className={`truncate text-xs ${
-            !email.read_at 
-              ? 'text-gray-400' 
-              : 'text-gray-500'
-          }`}>
-            {email.subject} - {email.body.replace(/<[^>]*>/g, '').substring(0, 100)}
-            {email.body.length > 100 ? '...' : ''}
-          </p>
         </div>
       </div>
     </div>
@@ -146,7 +166,8 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick }) => {
 
 // Use memo to prevent unnecessary re-renders
 export default memo(EmailListItem, (prevProps, nextProps) => {
-  // Only re-render if email ID changes or read status changes
+  // Only re-render if email ID changes, read status changes, or selection state changes
   return prevProps.email.id === nextProps.email.id && 
-         prevProps.email.read_at === nextProps.email.read_at;
+         prevProps.email.read_at === nextProps.email.read_at &&
+         prevProps.isSelected === nextProps.isSelected;
 });

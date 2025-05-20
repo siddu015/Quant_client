@@ -16,6 +16,8 @@ export interface Email {
   category?: string;
   is_encrypted?: boolean;
   raw_encrypted_content?: string;
+  is_draft?: boolean; // Added for draft emails
+  is_deleted?: boolean; // Added for trash functionality
   attachments?: {
     id: string;
     name: string;
@@ -29,6 +31,19 @@ export interface SendEmailRequest {
   subject: string;
   body: string;
   encrypt?: boolean;
+}
+
+export interface SaveDraftRequest {
+  id?: string; // Optional ID for updating existing drafts
+  recipient_email: string;
+  subject: string;
+  body: string;
+}
+
+// Added interface for delete email request
+export interface DeleteEmailRequest {
+  id: string;
+  permanently_delete?: boolean; // If true, permanently delete, otherwise move to trash
 }
 
 export interface EmailsResponse {
@@ -58,4 +73,6 @@ export interface EmailFilter {
   sort_by?: 'date' | 'sender' | 'subject';
   sort_order?: 'asc' | 'desc';
   force_refresh?: boolean;
+  include_deleted?: boolean; // Added to control whether to include deleted emails
+  drafts_only?: boolean; // Added to filter for drafts
 }

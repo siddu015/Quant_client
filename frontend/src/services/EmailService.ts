@@ -1,5 +1,5 @@
 // EmailService.ts
-import { Email, SendEmailRequest } from '../types/Email';
+import { Email, SendEmailRequest, SaveDraftRequest, DeleteEmailRequest } from '../types/Email';
 
 const API_URL = 'http://localhost:8080';
 
@@ -27,31 +27,29 @@ export const GMAIL_LABELS = {
 };
 
 /**
- * Format date to valid ISO string or return fallback
- * @param dateStr Date string to validate and format
- * @returns Valid ISO date string
+ * Format date to valid ISO string or return null if invalid
+ * @param dateStr Date string to validate
+ * @returns Original date string if valid, or null if invalid
  */
-const formatValidDate = (dateStr: string | undefined): string => {
+const formatValidDate = (dateStr: string | undefined): string | null => {
   if (!dateStr) {
     console.warn('Empty date received in formatValidDate');
-    return new Date().toISOString();
+    return null;
   }
   
-  console.log('Formatting date:', dateStr, 'Type:', typeof dateStr);
-  
   try {
+    // Only validate the date, don't modify it if valid
     const date = new Date(dateStr);
-    // Check if date is valid
     if (!isNaN(date.getTime())) {
-      const iso = date.toISOString();
-      console.log('Valid date converted to:', iso);
-      return iso;
+      // Return the original string, not a transformed version
+      return dateStr;
     }
-    console.warn('Invalid date detected:', dateStr);
-    return new Date().toISOString();
+    
+    console.warn('Invalid date detected in formatValidDate:', dateStr);
+    return null; // Return null for invalid dates
   } catch (e) {
-    console.error('Error parsing date:', dateStr, e);
-    return new Date().toISOString();
+    console.error('Error parsing date in formatValidDate:', dateStr, e);
+    return null; // Return null on error
   }
 };
 
@@ -72,17 +70,19 @@ const processEmails = (emails: Email[]): Email[] => {
       return email;
     }
     
-    // Format dates - ensure sent_at is a valid date
+    // Format dates - ensure sent_at is a valid date or keep original
     const formattedSentAt = formatValidDate(email.sent_at);
     
     // Parse sent_at as a timestamp for consistent sorting
     let sentTimestamp = 0;
     try {
-      sentTimestamp = new Date(formattedSentAt).getTime();
-      // If date parsing fails, use a fallback timestamp
-      if (isNaN(sentTimestamp)) {
-        console.warn(`Invalid sent_at timestamp for email ${email.id}: ${formattedSentAt}`);
-        sentTimestamp = 0;
+      if (formattedSentAt) {
+        sentTimestamp = new Date(formattedSentAt).getTime();
+        // If date parsing fails, use a fallback timestamp
+        if (isNaN(sentTimestamp)) {
+          console.warn(`Invalid sent_at timestamp for email ${email.id}: ${formattedSentAt}`);
+          sentTimestamp = 0;
+        }
       }
     } catch (e) {
       console.error('Error parsing sent date:', e);
@@ -126,7 +126,7 @@ const processEmails = (emails: Email[]): Email[] => {
     // Enhanced email object with processed label data
     return {
       ...email,
-      sent_at: formattedSentAt,
+      sent_at: formattedSentAt || email.sent_at, // Keep original if validation failed
       sent_timestamp: sentTimestamp, // Add timestamp for reliable sorting
       read_at: updatedReadAt,
       important,
@@ -444,7 +444,166 @@ export const EmailService = {
       console.error('Error marking email as read:', error);
       return false;
     }
-  }
+  },
+
+  // Save email as draft
+  async saveDraft(draftRequest: SaveDraftRequest): Promise<Email | null> {
+    try {
+      const response = await fetch(`${API_URL}/api/drafts`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(draftRequest),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to save draft:', response.statusText);
+        throw new Error(`Failed to save draft: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        console.error('API returned unsuccessful response:', data.error || 'Unknown error');
+        throw new Error(data.error || 'Failed to save draft');
+      }
+
+      return data.email || null;
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      return null;
+    }
+  },
+
+  // Get all drafts
+  async getDrafts(page = 0, pageSize = 50): Promise<{ drafts: Email[], totalPages: number, currentPage: number }> {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: pageSize.toString(),
+        drafts_only: 'true',
+      });
+
+      const response = await fetch(`${API_URL}/api/drafts?${params.toString()}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch drafts:', response.statusText);
+        throw new Error(`Failed to fetch drafts: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        console.error('API returned unsuccessful response:', data.error || 'Unknown error');
+        throw new Error(data.error || 'Failed to fetch drafts');
+      }
+
+      return {
+        drafts: processEmails(data.emails || []),
+        totalPages: data.total_pages || 1,
+        currentPage: data.current_page || 0,
+      };
+    } catch (error) {
+      console.error('Error fetching drafts:', error);
+      return { drafts: [], totalPages: 1, currentPage: 0 };
+    }
+  },
+
+  // Delete email (move to trash or permanently delete)
+  async deleteEmail(deleteRequest: DeleteEmailRequest): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_URL}/api/emails/${deleteRequest.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          permanently_delete: deleteRequest.permanently_delete || false,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to delete email:', response.statusText);
+        throw new Error(`Failed to delete email: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.success || false;
+    } catch (error) {
+      console.error('Error deleting email:', error);
+      return false;
+    }
+  },
+
+  // Get emails in trash
+  async getTrash(page = 0, pageSize = 50): Promise<{ emails: Email[], totalPages: number, currentPage: number }> {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: pageSize.toString(),
+        include_deleted: 'true',
+      });
+
+      const response = await fetch(`${API_URL}/api/trash?${params.toString()}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch trash:', response.statusText);
+        throw new Error(`Failed to fetch trash: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        console.error('API returned unsuccessful response:', data.error || 'Unknown error');
+        throw new Error(data.error || 'Failed to fetch trash');
+      }
+
+      return {
+        emails: processEmails(data.emails || []),
+        totalPages: data.total_pages || 1,
+        currentPage: data.current_page || 0,
+      };
+    } catch (error) {
+      console.error('Error fetching trash:', error);
+      return { emails: [], totalPages: 1, currentPage: 0 };
+    }
+  },
+
+  // Restore email from trash
+  async restoreFromTrash(emailId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_URL}/api/trash/${emailId}/restore`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error('Failed to restore email:', response.statusText);
+        throw new Error(`Failed to restore email: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.success || false;
+    } catch (error) {
+      console.error('Error restoring email:', error);
+      return false;
+    }
+  },
 };
 
 // Helper function to deduplicate emails by ID

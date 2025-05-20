@@ -82,7 +82,7 @@ const DecryptionVisualizer: React.FC = () => {
 };
 
 interface EmailDetailProps {
-  email: Email;
+  email: Email | null;
   onBack: () => void;
   onClose?: () => void;
 }
@@ -229,14 +229,21 @@ const isMarketingEmail = (subject: string, body: string): boolean => {
 };
 
 const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onClose }) => {
+  // Move hooks to the top level so they're always called
   const { userEmail } = useAuth();
-  const isSentEmail = email.sender_email === userEmail;
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [decryptedEmail, setDecryptedEmail] = useState<Email | null>(null);
 
+  // Add safeguard to return null if email is not provided
+  if (!email) {
+    return null;
+  }
+
+  const isSentEmail = email.sender_email === userEmail;
+
   // Format date for display
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return '';
     
     try {
       const date = new Date(dateString);
@@ -244,7 +251,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onClose }) => 
       // Check if date is valid
       if (isNaN(date.getTime())) {
         console.warn('Invalid date:', dateString);
-        return 'Invalid date';
+        return '';
       }
       
       return date.toLocaleString([], {
@@ -256,7 +263,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onClose }) => 
       });
     } catch (e) {
       console.error('Error formatting date:', e);
-      return 'Date error';
+      return '';
     }
   };
 
@@ -363,7 +370,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onClose }) => 
         </div>
       </div>
       
-      {/* Email content */}
+      {/* Email metadata */}
       <div className="p-6 border-b border-gray-700/30">
         <div className="flex items-start gap-4">
           <div className={`flex-shrink-0 w-12 h-12 ${senderAvatarColor} rounded-full flex items-center justify-center text-white text-xl font-medium shadow-lg`}>
@@ -384,7 +391,9 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onClose }) => 
                 )}
               </h1>
               <span className="text-sm text-gray-400">
-                {formatDate(email.sent_at)}
+                {formatDate(email.sent_at) && (
+                  <span>{formatDate(email.sent_at)}</span>
+                )}
               </span>
             </div>
             

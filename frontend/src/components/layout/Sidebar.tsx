@@ -3,12 +3,11 @@ import { useAuth } from '../../context/AuthContext';
 import ProfileImage from '../ui/ProfileImage';
 
 interface SidebarProps {
-  activeSection: 'inbox' | 'sent' | 'drafts';
-  onSectionChange: (section: 'inbox' | 'sent' | 'drafts') => void;
-  draftsCount?: number;
+  activeSection: 'inbox' | 'sent' | 'drafts' | 'trash';
+  onSectionChange: (section: 'inbox' | 'sent' | 'drafts' | 'trash') => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange, draftsCount = 0 }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => {
   const { userEmail, userName, userPicture } = useAuth();
 
   return (
@@ -70,23 +69,31 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange, draft
           <li>
             <button
               onClick={() => onSectionChange('drafts')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${
+              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
                 activeSection === 'drafts'
                   ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
                   : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
               }`}
             >
-              <div className="flex items-center">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
               Drafts
-              </div>
-              {draftsCount > 0 && (
-                <span className="bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-full min-w-[1.5rem] text-center">
-                  {draftsCount}
-                </span>
-              )}
+            </button>
+          </li>
+          <li>
+            <button
+              onClick={() => onSectionChange('trash')}
+              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                activeSection === 'trash'
+                  ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                  : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m6-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Trash
             </button>
           </li>
         </ul>

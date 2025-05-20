@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import EmailListItem from './EmailListItem';
 
 interface InboxProps {
-  mode: 'inbox' | 'sent' | 'drafts' | 'quantum';
+  mode: 'inbox' | 'sent' | 'drafts' | 'quantum' | 'trash';
   initialMessageId?: string | null;
   onMessageClosed?: () => void;
 }
@@ -178,6 +178,7 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
     const now = Math.floor(Date.now() / 1000);
     const diff = now - lastSync;
     
+    if (diff === 0) return 'Just now';
     if (diff < 60) return `${diff} seconds ago`;
     if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
@@ -210,6 +211,9 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
         console.log(`Refresh successful, found ${refreshResult.newEmailCount} new emails`);
         if (refreshResult.lastSync) {
           setLastSync(refreshResult.lastSync);
+        } else {
+          // If the backend didn't provide a lastSync time, set it to now
+          setLastSync(Math.floor(Date.now() / 1000));
         }
       } else {
         console.error('Failed to refresh emails from server');
@@ -300,14 +304,16 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
           <button
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className={`px-3 py-1 rounded-md flex items-center space-x-1 ${
+            title="Refresh emails"
+            aria-label="Refresh emails"
+            className={`p-2 rounded-lg flex items-center justify-center transition-all duration-150 transform focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 ${
               isRefreshing 
-                ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
-                : 'bg-blue-600 text-white hover:bg-blue-500'
+                ? 'bg-gray-800 text-gray-500 cursor-not-allowed' 
+                : 'bg-gray-700 text-gray-200 hover:bg-gray-600 shadow-md hover:shadow-lg hover:scale-105 active:bg-gray-700'
             }`}
           >
             <svg 
-              className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} 
+              className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24" 
@@ -320,7 +326,6 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
               />
             </svg>
-            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
         </div>
       </div>
@@ -394,6 +399,15 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
     </div>
   );
 
+  // Render email detail view
+  const renderEmailDetail = () => (
+    <EmailDetail 
+      email={selectedEmail} 
+      onBack={handleBackToList} 
+      onClose={handleCloseDetail}
+    />
+  );
+
   // Render loading state
   if (isLoading) {
     return (
@@ -420,12 +434,7 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
 
   // Render email detail view
   if (selectedEmail) {
-    return (
-      <EmailDetail 
-        email={selectedEmail} 
-        onBack={handleCloseDetail} 
-      />
-    );
+    return renderEmailDetail();
   }
 
   return renderEmailList();

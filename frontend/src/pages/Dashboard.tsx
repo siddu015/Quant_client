@@ -4,33 +4,24 @@ import { useAuth } from '../context/AuthContext'
 import { Inbox, ComposeEmail } from '../components/email';
 import { EmailService } from '../services/EmailService';
 import { Header, Sidebar } from '../components/layout';
+import { Email, SaveDraftRequest } from '../types/Email';
 
 interface DashboardProps {
     initialMessageId?: string | null;
 }
 
-// Define interface for draft emails
-interface DraftEmail {
-    id: string;
-    recipient: string;
-    subject: string;
-    body: string;
-    timestamp: Date;
-}
-
 function Dashboard({ initialMessageId }: DashboardProps) {
-    const { isAuthenticated, isLoading, checkAuthStatus, logout, user } = useAuth();
-    const [activeSection, setActiveSection] = useState<'inbox' | 'sent' | 'drafts'>('inbox');
+    const { isAuthenticated, isLoading, checkAuthStatus, logout } = useAuth();
+    const [activeSection, setActiveSection] = useState<'inbox' | 'sent' | 'drafts' | 'trash'>('inbox');
     const [isComposing, setIsComposing] = useState(false);
     const [shouldRefresh, setShouldRefresh] = useState(0);
     const [viewingMessageId, setViewingMessageId] = useState<string | null>(initialMessageId || null);
-    const [drafts, setDrafts] = useState<DraftEmail[]>([]);
-    const [currentDraft, setCurrentDraft] = useState<DraftEmail | null>(null);
+    const [currentDraft, setCurrentDraft] = useState<SaveDraftRequest | null>(null);
 
     useEffect(() => {
-        // Check authentication status when component mounts
+        // Check authentication status when component mounts - with empty dependency array to run once
         checkAuthStatus();
-    }, [checkAuthStatus]);
+    }, []); // Remove checkAuthStatus from dependencies to prevent re-renders
 
     useEffect(() => {
         // If not loading and not authenticated, redirect to welcome page
@@ -46,24 +37,6 @@ function Dashboard({ initialMessageId }: DashboardProps) {
         }
     }, [initialMessageId]);
 
-    // Load drafts from localStorage
-    useEffect(() => {
-        const storedDrafts = localStorage.getItem('email-drafts');
-        if (storedDrafts) {
-            try {
-                setDrafts(JSON.parse(storedDrafts));
-            } catch (err) {
-                console.error('Error parsing drafts from localStorage', err);
-                localStorage.removeItem('email-drafts');
-            }
-        }
-    }, []);
-
-    // Save drafts to localStorage when they change
-    useEffect(() => {
-        localStorage.setItem('email-drafts', JSON.stringify(drafts));
-    }, [drafts]);
-
     const handleSendEmail = async (email: { recipient: string; subject: string; body: string; encrypt: boolean }) => {
         try {
             await EmailService.sendEmail({
@@ -73,13 +46,8 @@ function Dashboard({ initialMessageId }: DashboardProps) {
                 encrypt: email.encrypt
             });
             setIsComposing(false);
+            // Clear the current draft
             setCurrentDraft(null);
-            
-            // If we were editing a draft, remove it from drafts
-            if (currentDraft) {
-                setDrafts(drafts.filter(draft => draft.id !== currentDraft.id));
-            }
-            
             // Trigger a refresh of the emails list
             setShouldRefresh(prev => prev + 1);
         } catch (err) {
@@ -88,42 +56,44 @@ function Dashboard({ initialMessageId }: DashboardProps) {
         }
     };
 
-    const handleSaveDraft = (draftData: { recipient: string; subject: string; body: string }) => {
-        const now = new Date();
-        
-        if (currentDraft) {
-            // Update existing draft
-            const updatedDrafts = drafts.map(draft => 
-                draft.id === currentDraft.id 
-                    ? { ...draft, ...draftData, timestamp: now } 
-                    : draft
-            );
-            setDrafts(updatedDrafts);
-        } else {
-            // Create new draft
-            const newDraft: DraftEmail = {
-                id: Date.now().toString(),
-                ...draftData,
-                timestamp: now
-            };
-            setDrafts([...drafts, newDraft]);
+    const handleSaveDraft = async (draft: { recipient: string; subject: string; body: string }) => {
+        try {
+            // Only save if there's content
+            if (draft.recipient || draft.subject || draft.body) {
+                const draftRequest: SaveDraftRequest = {
+                    recipient_email: draft.recipient,
+                    subject: draft.subject,
+                    body: draft.body
+                };
+                
+                await EmailService.saveDraft(draftRequest);
+                setShouldRefresh(prev => prev + 1);
+            }
+        } catch (err) {
+            console.error('Error saving draft:', err);
         }
-        
+    };
+
+    // Handle cancel compose - save as draft if content exists
+    const handleCancelCompose = async () => {
+        if (currentDraft && (currentDraft.recipient_email || currentDraft.subject || currentDraft.body)) {
+            await handleSaveDraft({
+                recipient: currentDraft.recipient_email,
+                subject: currentDraft.subject,
+                body: currentDraft.body
+            });
+        }
         setCurrentDraft(null);
+        setIsComposing(false);
     };
 
-    const handleComposeClick = () => {
-        setCurrentDraft(null);
-        setIsComposing(true);
-    };
-
-    const handleEditDraft = (draft: DraftEmail) => {
-        setCurrentDraft(draft);
-        setIsComposing(true);
-    };
-
-    const handleDeleteDraft = (draftId: string) => {
-        setDrafts(drafts.filter(draft => draft.id !== draftId));
+    // Update draft content when user types
+    const handleDraftChange = (draft: { recipient: string; subject: string; body: string }) => {
+        setCurrentDraft({
+            recipient_email: draft.recipient,
+            subject: draft.subject,
+            body: draft.body
+        });
     };
 
     if (isLoading) {
@@ -157,8 +127,7 @@ function Dashboard({ initialMessageId }: DashboardProps) {
                     <div className="md:col-span-1">
                         <Sidebar 
                             activeSection={activeSection} 
-                            onSectionChange={setActiveSection}
-                            draftsCount={drafts.length}
+                            onSectionChange={setActiveSection} 
                         />
                     </div>
                     
@@ -167,58 +136,12 @@ function Dashboard({ initialMessageId }: DashboardProps) {
                         <div className="bg-black/40 backdrop-blur-md rounded-xl shadow-2xl shadow-black/30 overflow-hidden border border-gray-700/50 h-full relative">
                             {/* Email content area */}
                             <div className="p-4 h-full">
-                                {activeSection === 'drafts' ? (
-                                    // Drafts View
-                                    <div className="h-full flex flex-col">
-                                        <h2 className="text-xl font-bold text-white mb-4">Drafts</h2>
-                                        {drafts.length === 0 ? (
-                                            <div className="flex-grow flex items-center justify-center">
-                                                <p className="text-gray-400">No drafts yet</p>
-                                            </div>
-                                        ) : (
-                                            <div className="flex-grow overflow-auto">
-                                                <div className="space-y-2">
-                                                    {drafts.map(draft => (
-                                                        <div 
-                                                            key={draft.id} 
-                                                            className="p-3 bg-gray-800/50 rounded-lg hover:bg-gray-800/80 transition-colors cursor-pointer group border border-gray-700/30"
-                                                            onClick={() => handleEditDraft(draft)}
-                                                        >
-                                                            <div className="flex justify-between items-start">
-                                                                <div>
-                                                                    <p className="font-medium text-gray-200 truncate">{draft.subject || "(No subject)"}</p>
-                                                                    <p className="text-sm text-gray-400 truncate">{draft.recipient || "No recipient"}</p>
-                                                                </div>
-                                                                <div className="flex items-center">
-                                                                    <span className="text-xs text-gray-500">{new Date(draft.timestamp).toLocaleDateString()}</span>
-                                                                    <button 
-                                                                        className="ml-2 text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleDeleteDraft(draft.id);
-                                                                        }}
-                                                                    >
-                                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                                        </svg>
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                            <p className="text-sm text-gray-400 mt-1 truncate">{draft.body}</p>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <Inbox 
-                                        mode={activeSection} 
-                                        key={shouldRefresh} 
-                                        initialMessageId={viewingMessageId}
-                                        onMessageClosed={() => setViewingMessageId(null)}
-                                    />
-                                )}
+                                <Inbox 
+                                    mode={activeSection} 
+                                    key={shouldRefresh} 
+                                    initialMessageId={viewingMessageId}
+                                    onMessageClosed={() => setViewingMessageId(null)}
+                                />
                             </div>
                         </div>
                     </div>
@@ -230,14 +153,8 @@ function Dashboard({ initialMessageId }: DashboardProps) {
                 <div className="fixed bottom-4 right-4 z-20 w-full max-w-lg">
                     <ComposeEmail 
                         onSend={handleSendEmail} 
-                        onCancel={() => setIsComposing(false)}
-                        onSaveDraft={handleSaveDraft}
-                        isOpen={isComposing} 
-                        initialDraft={currentDraft ? {
-                            recipient: currentDraft.recipient,
-                            subject: currentDraft.subject,
-                            body: currentDraft.body
-                        } : undefined}
+                        onCancel={handleCancelCompose} 
+                        isOpen={isComposing}
                     />
                 </div>
             )}
