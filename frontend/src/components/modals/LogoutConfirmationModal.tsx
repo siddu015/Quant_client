@@ -35,4 +35,4 @@ const LogoutConfirmationModal: React.FC<LogoutConfirmationModalProps> = ({ isOpe
   );
 };
 
-export default LogoutConfirmationModal; 
+export default LogoutConfirmationModal;

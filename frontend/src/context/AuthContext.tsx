@@ -1,5 +1,6 @@
 // AuthContext.tsx
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import LogoutConfirmationModal from '../components/modals/LogoutConfirmationModal';
 
 // Helper function for Google profile URLs
 const sanitizeProfilePicture = (url: string | null): string | null => {
@@ -62,6 +63,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [userPicture, setUserPicture] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
   const checkAuthStatus = async () => {
     try {
@@ -120,7 +122,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => clearInterval(intervalId);
   }, []);
 
-  const logout = async () => {
+  // Actual logout logic
+  const executeLogout = async () => {
     try {
       const response = await fetch('http://localhost:8080/api/logout', {
         method: 'POST',
@@ -154,6 +157,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Function to trigger showing the logout modal
+  const requestLogout = async () => {
+    setIsLogoutModalOpen(true);
+  };
+
+  const handleConfirmLogout = () => {
+    setIsLogoutModalOpen(false);
+    executeLogout();
+  };
+
+  const handleCancelLogout = () => {
+    setIsLogoutModalOpen(false);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -163,11 +180,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         userPicture,
         isLoading,
         checkAuthStatus,
-        logout,
+        logout: requestLogout,
         user,
       }}
     >
       {children}
+      <LogoutConfirmationModal
+        isOpen={isLogoutModalOpen}
+        onConfirm={handleConfirmLogout}
+        onCancel={handleCancelLogout}
+      />
     </AuthContext.Provider>
   );
 };
