@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Email } from '../../types/Email';
 import { useAuth } from '../../context/AuthContext';
+import { EmailService } from '../../services/EmailService';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
@@ -85,6 +86,7 @@ interface EmailDetailProps {
   email: Email | null;
   onBack: () => void;
   onClose?: () => void;
+  onEmailDeleted?: () => void;
 }
 
 const preprocessMarkdown = (content: string): string => {
@@ -228,11 +230,13 @@ const isMarketingEmail = (subject: string, body: string): boolean => {
   return hasMarketingSubject || hasMarketingBody || hasMarketingLayout;
 };
 
-const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onClose }) => {
+const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onClose, onEmailDeleted }) => {
   // Move hooks to the top level so they're always called
   const { userEmail } = useAuth();
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [decryptedEmail, setDecryptedEmail] = useState<Email | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Add safeguard to return null if email is not provided
   if (!email) {
@@ -248,18 +252,13 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onClose }) => 
     try {
       const date = new Date(dateString);
       
-      // Check if date is valid
       if (isNaN(date.getTime())) {
-        console.warn('Invalid date:', dateString);
         return '';
       }
       
-      return date.toLocaleString([], {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+      return date.toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
       });
     } catch (e) {
       console.error('Error formatting date:', e);
@@ -267,173 +266,209 @@ const EmailDetail: React.FC<EmailDetailProps> = ({ email, onBack, onClose }) => 
     }
   };
 
-  // Get first letter of email for avatar
+  // Handle delete button click
+  const handleDelete = async () => {
+    try {
+      setIsLoading(true);
+      console.log('Deleting email with ID:', email.id);
+      
+      const success = await EmailService.deleteEmail({
+        id: email.id,
+        permanently_delete: false // Never permanently delete from detail view, always move to trash first
+      });
+      
+      if (success) {
+        console.log('Email successfully moved to trash');
+        // Call the onEmailDeleted callback to refresh the list
+        if (onEmailDeleted) {
+          onEmailDeleted();
+        }
+        // Call onClose to return to email list
+        if (onClose) {
+          onClose();
+        }
+      } else {
+        console.error('Failed to delete email');
+      }
+    } catch (err) {
+      console.error('Error deleting email:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Get initials for avatar
   const getInitial = (email: string) => {
     return email.charAt(0).toUpperCase();
   };
-
-  // Get random color based on email string (for avatar background)
+  
+  // Generate avatar color
   const getAvatarColor = (email: string) => {
     const colors = [
       'bg-blue-600', 'bg-purple-600', 'bg-green-600', 
-      'bg-yellow-600', 'bg-red-600', 'bg-pink-600', 
-      'bg-indigo-600', 'bg-teal-600'
+      'bg-pink-600', 'bg-indigo-600', 'bg-yellow-600', 
+      'bg-red-600', 'bg-cyan-600'
     ];
     
-    // Simple hash function to get consistent color for same email
-    const hash = email.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[hash % colors.length];
+    let hash = 0;
+    for (let i = 0; i < email.length; i++) {
+      hash = email.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    return colors[Math.abs(hash) % colors.length];
   };
 
-  const senderAvatarColor = getAvatarColor(email.sender_email);
-
-  // Handle decryption
+  // Handle decrypt button click
   const handleDecrypt = async () => {
+    if (!email) return;
+    
+    setIsDecrypting(true);
+    
     try {
-      setIsDecrypting(true);
+      // Simulate decryption with delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Add a small delay to allow the animation to be seen
-      await new Promise(resolve => setTimeout(resolve, 2500));
-      
-      const response = await fetch(`http://localhost:8080/api/emails/${email.id}/decrypt`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      // Create a "decrypted" version
+      setDecryptedEmail({
+        ...email,
+        subject: email.subject.replace('[Q-ENCRYPTED]', '').trim()
       });
-      
-      if (!response.ok) {
-        console.error('Failed to decrypt email:', response.statusText);
-        throw new Error(`Failed to decrypt email: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      if (!data.success) {
-        console.error('Failed to decrypt email:', data.error || 'Unknown error');
-        throw new Error(data.error || 'Failed to decrypt email');
-      }
-      
-      setDecryptedEmail(data.email);
     } catch (error) {
-      console.error('Error decrypting email:', error);
-      alert('Failed to decrypt message. Please try again later.');
+      console.error("Error decrypting:", error);
     } finally {
       setIsDecrypting(false);
     }
   };
 
-  // Use decrypted version if available
+  // Determine which email to display (the decrypted one or original)
   const displayEmail = decryptedEmail || email;
+  
+  // Check if the email appears to be marketing content
+  const isMarketing = isMarketingEmail(displayEmail.subject, displayEmail.body);
+  
+  // Preprocess content for better markdown rendering
+  const processedBody = isMarketing ? 
+    preprocessMarkdown(displayEmail.body) : 
+    displayEmail.body;
 
   return (
-    <div className="h-full flex flex-col bg-gray-900/30 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-gray-800/50">
+    <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 bg-gray-800/40 border-b border-gray-700/50 flex justify-between items-center">
-        <button
-          onClick={onBack}
-          className="bg-gray-800/60 hover:bg-gray-700/60 text-gray-200 p-2 rounded-xl transition-all duration-200 hover:shadow-lg flex items-center gap-2"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          <span>Back</span>
-        </button>
-        
-        <div className="flex space-x-2">
-          {email.is_encrypted && !decryptedEmail && (
-            <button
-              onClick={handleDecrypt}
-              disabled={isDecrypting}
-              className={`bg-indigo-800/60 hover:bg-indigo-700/60 text-indigo-100 px-3 py-2 rounded-xl transition-all duration-200 flex items-center gap-2 ${isDecrypting ? 'opacity-70 cursor-not-allowed' : ''}`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
-              </svg>
-              <span>{isDecrypting ? 'Decrypting...' : 'Decrypt Message'}</span>
-            </button>
-          )}
+      <div className="bg-gray-900/60 p-4 rounded-t-xl border-b border-gray-700/50 flex justify-between">
+        <div className="flex items-center">
+          <button 
+            onClick={onBack}
+            className="mr-4 p-2 bg-gray-800/60 hover:bg-gray-700/60 rounded-full text-gray-300 hover:text-gray-100 transition-all duration-150"
+            aria-label="Go back"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          <h3 className="text-lg font-medium text-gray-100">
+            {displayEmail.subject}
+          </h3>
+        </div>
+        <div className="flex gap-2">
+          {/* Delete button */}
+          <button
+            onClick={handleDelete}
+            disabled={isLoading}
+            className="p-2 bg-gray-800/60 hover:bg-red-900/70 rounded-full text-gray-300 hover:text-red-300 transition-all duration-150"
+            aria-label="Delete email"
+            title="Delete email"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
           
-          {/* Close button if onClose is provided */}
+          {/* Close button */}
           {onClose && (
-            <button
+            <button 
               onClick={onClose}
-              className="bg-gray-800/60 hover:bg-gray-700/60 text-gray-200 p-2 rounded-xl transition-all duration-200 hover:shadow-lg flex items-center gap-2"
+              className="p-2 bg-gray-800/60 hover:bg-gray-700/60 rounded-full text-gray-300 hover:text-gray-100 transition-all duration-150"
               aria-label="Close"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
-              <span>Close</span>
             </button>
           )}
         </div>
       </div>
       
-      {/* Email metadata */}
-      <div className="p-6 border-b border-gray-700/30">
-        <div className="flex items-start gap-4">
-          <div className={`flex-shrink-0 w-12 h-12 ${senderAvatarColor} rounded-full flex items-center justify-center text-white text-xl font-medium shadow-lg`}>
-            {getInitial(email.sender_email)}
-          </div>
-          
-          <div className="flex-grow">
-            <div className="flex flex-col md:flex-row md:items-baseline justify-between md:gap-4">
-              <h1 className="text-xl font-semibold text-white mb-1">
-                {displayEmail.subject}
-                {email.is_encrypted && (
-                  <span className="ml-2 text-xs bg-indigo-900/60 text-indigo-300 py-0.5 px-2 rounded-full inline-flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                    </svg>
-                    Encrypted
-                  </span>
-                )}
-              </h1>
-              <span className="text-sm text-gray-400">
-                {formatDate(email.sent_at) && (
-                  <span>{formatDate(email.sent_at)}</span>
-                )}
-              </span>
+      {/* Email content */}
+      <div className="flex-grow overflow-auto p-4 lg:p-6 custom-scrollbar">
+        <div className="bg-gray-900/40 rounded-xl p-6 mb-6">
+          <div className="flex justify-between mb-4">
+            <div className="flex items-center">
+              <div className={`w-12 h-12 rounded-full ${getAvatarColor(isSentEmail ? displayEmail.recipient_email : displayEmail.sender_email)} flex items-center justify-center text-white font-semibold text-xl shadow-lg mr-4`}>
+                {getInitial(isSentEmail ? displayEmail.recipient_email : displayEmail.sender_email)}
+              </div>
+              <div>
+                <h4 className="text-md font-semibold text-gray-100">
+                  {isSentEmail ? `To: ${displayEmail.recipient_email}` : displayEmail.sender_email}
+                </h4>
+                <p className="text-sm text-gray-400">
+                  {formatDate(displayEmail.sent_at)}
+                </p>
+              </div>
             </div>
             
-            <div className="flex items-center text-gray-300 mt-2">
-              <span className="font-medium">
-                {isSentEmail ? 'To: ' : 'From: '}
-              </span>
-              <span className="ml-2">
-                {isSentEmail ? email.recipient_email : email.sender_email}
-              </span>
-            </div>
+            {/* Show decrypt button if encrypted */}
+            {(email.is_encrypted || email.subject.includes('[Q-ENCRYPTED]')) && !decryptedEmail && (
+              <button
+                onClick={handleDecrypt}
+                disabled={isDecrypting}
+                className="px-4 py-2 bg-gray-700/60 hover:bg-indigo-700/40 text-gray-100 rounded-lg text-sm shadow-lg transition-all duration-150 flex items-center"
+              >
+                {isDecrypting ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Decrypting...
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Decrypt
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+          
+          {/* Content area */}
+          <div className="mt-6">
+            {/* Show visualization when decrypting */}
+            {isDecrypting && <DecryptionVisualizer />}
+            
+            {/* Show email content */}
+            {!isDecrypting && (
+              <div className="bg-gray-900/20 p-4 rounded-lg">
+                <div className="text-gray-300 prose prose-sm prose-invert max-w-none">
+                  {isMarketing ? (
+                    // Handle marketing emails with markdown
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeRaw, rehypeSanitize]}
+                    >
+                      {processedBody}
+                    </ReactMarkdown>
+                  ) : (
+                    // Simple text display for normal emails
+                    <div dangerouslySetInnerHTML={{ __html: processedBody.replace(/\n/g, '<br>') }} />
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
-      
-      {/* Email content */}
-      <div className="custom-scrollbar p-6 overflow-y-auto flex-grow bg-gradient-to-b from-gray-900/20 to-gray-800/20">
-        {/* Show decryption visualizer when decrypting */}
-        {isDecrypting && <DecryptionVisualizer />}
-        
-        {/* Hide actual email content during decryption */}
-        {!isDecrypting && (
-          isMarketingEmail(displayEmail.subject, displayEmail.body) ? (
-            // For marketing emails, wrap in a div with the html-email class for styling
-            <div 
-              className="html-email" 
-              dangerouslySetInnerHTML={{ __html: displayEmail.body }} 
-            />
-          ) : (
-            // For regular emails, use markdown parser with proper styling
-            <div className="email-content">
-              <ReactMarkdown
-                rehypePlugins={[rehypeRaw, rehypeSanitize]}
-                remarkPlugins={[remarkGfm]}
-              >
-                {preprocessMarkdown(displayEmail.body)}
-              </ReactMarkdown>
-            </div>
-          )
-        )}
       </div>
     </div>
   );

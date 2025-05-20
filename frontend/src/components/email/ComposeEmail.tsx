@@ -6,6 +6,7 @@ interface ComposeEmailProps {
   onCancel: () => void;
   isOpen: boolean;
   onSaveDraft?: (draft: { recipient: string; subject: string; body: string }) => void;
+  onDraftChange?: (draft: { recipient: string; subject: string; body: string }) => void;
   initialDraft?: { recipient: string; subject: string; body: string };
 }
 
@@ -91,6 +92,7 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
   onCancel, 
   isOpen, 
   onSaveDraft,
+  onDraftChange,
   initialDraft 
 }) => {
   const [recipient, setRecipient] = useState('');
@@ -107,6 +109,17 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
       setBody(initialDraft.body);
     }
   }, [initialDraft]);
+
+  // Call onDraftChange whenever the fields change
+  useEffect(() => {
+    if (onDraftChange) {
+      onDraftChange({
+        recipient,
+        subject,
+        body
+      });
+    }
+  }, [recipient, subject, body, onDraftChange]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

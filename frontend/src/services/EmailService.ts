@@ -27,33 +27,6 @@ export const GMAIL_LABELS = {
 };
 
 /**
- * Format date to valid ISO string or return null if invalid
- * @param dateStr Date string to validate
- * @returns Original date string if valid, or null if invalid
- */
-const formatValidDate = (dateStr: string | undefined): string | null => {
-  if (!dateStr) {
-    console.warn('Empty date received in formatValidDate');
-    return null;
-  }
-  
-  try {
-    // Only validate the date, don't modify it if valid
-    const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) {
-      // Return the original string, not a transformed version
-      return dateStr;
-    }
-    
-    console.warn('Invalid date detected in formatValidDate:', dateStr);
-    return null; // Return null for invalid dates
-  } catch (e) {
-    console.error('Error parsing date in formatValidDate:', dateStr, e);
-    return null; // Return null on error
-  }
-};
-
-/**
  * Process emails to extract label information
  * Converts Gmail API label IDs to user-friendly properties
  */
@@ -70,23 +43,21 @@ const processEmails = (emails: Email[]): Email[] => {
       return email;
     }
     
-    // Format dates - ensure sent_at is a valid date or keep original
-    const formattedSentAt = formatValidDate(email.sent_at);
+    // Keep the original sent_at value
+    const sentAt = email.sent_at;
     
-    // Parse sent_at as a timestamp for consistent sorting
+    // Set a default timestamp for sorting
     let sentTimestamp = 0;
     try {
-      if (formattedSentAt) {
-        sentTimestamp = new Date(formattedSentAt).getTime();
-        // If date parsing fails, use a fallback timestamp
-        if (isNaN(sentTimestamp)) {
-          console.warn(`Invalid sent_at timestamp for email ${email.id}: ${formattedSentAt}`);
-          sentTimestamp = 0;
+      // Simple timestamp generation - if it fails, we just use 0
+      if (sentAt) {
+        const timestamp = new Date(sentAt).getTime();
+        if (!isNaN(timestamp)) {
+          sentTimestamp = timestamp;
         }
       }
-    } catch (e) {
-      console.error('Error parsing sent date:', e);
-      sentTimestamp = 0;
+    } catch {
+      // Ignore parsing errors
     }
     
     // Use existing email data, but parse label_ids to determine properties
@@ -97,8 +68,6 @@ const processEmails = (emails: Email[]): Email[] => {
                        labelIds.includes(GMAIL_LABELS.STARRED);
     
     // Determine if unread based on UNREAD label
-    // If the email has the UNREAD label, it means it hasn't been read yet
-    // Or if read_at is null, it means it hasn't been read yet
     const isUnread = labelIds.includes(GMAIL_LABELS.UNREAD) || email.read_at === null;
     
     // Override read_at if we have label information indicating unread status
@@ -107,8 +76,7 @@ const processEmails = (emails: Email[]): Email[] => {
       // If it has UNREAD label, make sure read_at is null
       updatedReadAt = null;
     } else if (email.read_at === null && !labelIds.includes(GMAIL_LABELS.UNREAD)) {
-      // If it doesn't have UNREAD label but read_at is null, set it to now 
-      // (assuming it's been read at some point)
+      // If it doesn't have UNREAD label but read_at is null, set it to now
       updatedReadAt = new Date().toISOString();
     }
     
@@ -126,8 +94,8 @@ const processEmails = (emails: Email[]): Email[] => {
     // Enhanced email object with processed label data
     return {
       ...email,
-      sent_at: formattedSentAt || email.sent_at, // Keep original if validation failed
-      sent_timestamp: sentTimestamp, // Add timestamp for reliable sorting
+      sent_at: sentAt,
+      sent_timestamp: sentTimestamp,
       read_at: updatedReadAt,
       important,
       category: category || undefined,
@@ -148,25 +116,8 @@ const sortEmailsByDate = (emails: Email[]): Email[] => {
       return b.sent_timestamp - a.sent_timestamp;
     }
     
-    // Fallback to comparing date strings
-    try {
-      const dateA = new Date(a.sent_at);
-      const dateB = new Date(b.sent_at);
-      
-      // If both dates are valid, compare them
-      if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
-        return dateB.getTime() - dateA.getTime();
-      }
-      
-      // If one date is invalid, prioritize the valid one
-      if (!isNaN(dateA.getTime())) return -1;
-      if (!isNaN(dateB.getTime())) return 1;
-    } catch (e) {
-      console.error('Error comparing dates:', e);
-    }
-    
     // Last resort: string comparison
-    return b.sent_at.localeCompare(a.sent_at);
+    return (b.sent_at || '').localeCompare(a.sent_at || '');
   });
 };
 
@@ -518,23 +469,45 @@ export const EmailService = {
   // Delete email (move to trash or permanently delete)
   async deleteEmail(deleteRequest: DeleteEmailRequest): Promise<boolean> {
     try {
-      const response = await fetch(`${API_URL}/api/emails/${deleteRequest.id}`, {
+      console.log('Deleting email with ID:', deleteRequest.id);
+      console.log('Delete request:', deleteRequest);
+      
+      const url = `${API_URL}/api/emails/${deleteRequest.id}`;
+      console.log('Delete URL:', url);
+      
+      const payload = {
+        permanently_delete: deleteRequest.permanently_delete || false
+      };
+      console.log('Delete payload:', payload);
+      
+      // Before making the request, check if the user is logged in
+      const userResponse = await fetch(`${API_URL}/api/user`, {
+        credentials: 'include'
+      });
+      const userData = await userResponse.json();
+      console.log('User auth check:', userData);
+      
+      if (!userData.authenticated) {
+        console.error('User is not authenticated!');
+        throw new Error('Authentication required');
+      }
+      
+      const response = await fetch(url, {
         method: 'DELETE',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          permanently_delete: deleteRequest.permanently_delete || false,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        console.error('Failed to delete email:', response.statusText);
-        throw new Error(`Failed to delete email: ${response.statusText}`);
+        console.error('Failed to delete email:', response.status, response.statusText);
+        throw new Error(`Failed to delete email: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('Delete response:', data);
       return data.success || false;
     } catch (error) {
       console.error('Error deleting email:', error);

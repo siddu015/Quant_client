@@ -96,6 +96,16 @@ function Dashboard({ initialMessageId }: DashboardProps) {
         });
     };
 
+    // Handle email deletion (trigger refresh)
+    const handleEmailDeleted = () => {
+        console.log('Email deleted/restored, refreshing list');
+        setShouldRefresh(prev => prev + 1);
+        // Clear the current viewing message if we're in trash and just deleted something
+        if (activeSection === 'trash') {
+            setViewingMessageId(null);
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="bg-[#0a0b0e] min-h-screen flex items-center justify-center">
@@ -134,13 +144,21 @@ function Dashboard({ initialMessageId }: DashboardProps) {
                     {/* Email content */}
                     <div className="md:col-span-3">
                         <div className="bg-black/40 backdrop-blur-md rounded-xl shadow-2xl shadow-black/30 overflow-hidden border border-gray-700/50 h-full relative">
+                            {/* Section title */}
+                            <div className="p-4 border-b border-gray-700/50">
+                                <h1 className="text-xl font-medium text-white capitalize">
+                                    {activeSection}
+                                </h1>
+                            </div>
+                            
                             {/* Email content area */}
-                            <div className="p-4 h-full">
+                            <div className="p-4 h-[calc(100%-60px)] overflow-auto">
                                 <Inbox 
                                     mode={activeSection} 
-                                    key={shouldRefresh} 
+                                    key={`${activeSection}-${shouldRefresh}`} 
                                     initialMessageId={viewingMessageId}
                                     onMessageClosed={() => setViewingMessageId(null)}
+                                    onEmailDeleted={handleEmailDeleted}
                                 />
                             </div>
                         </div>
@@ -155,6 +173,8 @@ function Dashboard({ initialMessageId }: DashboardProps) {
                         onSend={handleSendEmail} 
                         onCancel={handleCancelCompose} 
                         isOpen={isComposing}
+                        onSaveDraft={handleSaveDraft}
+                        onDraftChange={handleDraftChange}
                     />
                 </div>
             )}

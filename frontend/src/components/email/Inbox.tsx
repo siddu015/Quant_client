@@ -10,9 +10,10 @@ interface InboxProps {
   mode: 'inbox' | 'sent' | 'drafts' | 'quantum' | 'trash';
   initialMessageId?: string | null;
   onMessageClosed?: () => void;
+  onEmailDeleted?: () => void;
 }
 
-const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }) => {
+const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed, onEmailDeleted }) => {
   // State management
   const [emails, setEmails] = useState<Email[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
@@ -28,14 +29,22 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
   const emailCacheRef = useRef<{
     received: Email[];
     sent: Email[];
+    drafts: Email[];
+    trash: Email[];
     receivedTotalPages: number;
     sentTotalPages: number;
+    draftsTotalPages: number;
+    trashTotalPages: number;
     lastSync?: number;
   }>({ 
     received: [], 
     sent: [], 
+    drafts: [], 
+    trash: [],
     receivedTotalPages: 1, 
-    sentTotalPages: 1 
+    sentTotalPages: 1,
+    draftsTotalPages: 1,
+    trashTotalPages: 1
   });
   
   // Get auth context
@@ -52,46 +61,59 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
     setError(null);
     
     try {
-      console.log(`Fetching emails for page ${page}, force refresh: ${forceRefresh}`);
-      const result = await EmailService.getEmails(page, 50, forceRefresh);
+      console.log(`Fetching emails for ${mode} page ${page}, force refresh: ${forceRefresh}`);
       
-      // Update the cache reference
-      emailCacheRef.current = {
-        received: result.received,
-        sent: result.sent,
-        receivedTotalPages: mode === 'inbox' ? result.totalPages : emailCacheRef.current.receivedTotalPages,
-        sentTotalPages: mode === 'sent' ? result.totalPages : emailCacheRef.current.sentTotalPages,
-        lastSync: result.lastSync
-      };
-      
-      // Update pagination state based on current mode
-      if (mode === 'inbox') {
+      // Different fetch based on mode
+      if (mode === 'drafts') {
+        const result = await EmailService.getDrafts(page, 50);
+        emailCacheRef.current.drafts = result.drafts;
+        emailCacheRef.current.draftsTotalPages = result.totalPages;
         setTotalPages(result.totalPages);
-      } else if (mode === 'sent') {
+        setCurrentPage(result.currentPage);
+        setEmails(result.drafts);
+      } else if (mode === 'trash') {
+        const result = await EmailService.getTrash(page, 50);
+        emailCacheRef.current.trash = result.emails;
+        emailCacheRef.current.trashTotalPages = result.totalPages;
         setTotalPages(result.totalPages);
-      }
-      
-      setCurrentPage(result.currentPage);
-      
-      // Set last sync time
-      if (result.lastSync) {
-        setLastSync(result.lastSync);
+        setCurrentPage(result.currentPage);
+        setEmails(result.emails);
       } else {
-        // If backend didn't provide a lastSync time (e.g., new user)
-        // but emails were fetched (implies success), set it to now.
-        // Check if emails were actually fetched to avoid setting on empty initial state
-        if (mode === 'sent' ? result.sent.length > 0 : result.received.length > 0 || result.totalPages > 0) {
-            setLastSync(Math.floor(Date.now() / 1000));
+        // Normal inbox/sent emails fetch
+        const result = await EmailService.getEmails(page, 50, forceRefresh);
+        
+        // Update the cache reference
+        emailCacheRef.current = {
+          ...emailCacheRef.current,
+          received: result.received,
+          sent: result.sent,
+          receivedTotalPages: mode === 'inbox' ? result.totalPages : emailCacheRef.current.receivedTotalPages,
+          sentTotalPages: mode === 'sent' ? result.totalPages : emailCacheRef.current.sentTotalPages,
+          lastSync: result.lastSync
+        };
+        
+        // Update pagination state based on current mode
+        if (mode === 'inbox') {
+          setTotalPages(result.totalPages);
+          setEmails(result.received);
+        } else if (mode === 'sent') {
+          setTotalPages(result.totalPages);
+          setEmails(result.sent);
         }
-      }
-      
-      // Set emails based on mode
-      if (mode === 'sent') {
-        setEmails(result.sent);
-      } else if (mode === 'inbox') {
-        setEmails(result.received);
-      } else {
-        setEmails([]);
+        
+        setCurrentPage(result.currentPage);
+        
+        // Set last sync time
+        if (result.lastSync) {
+          setLastSync(result.lastSync);
+        } else {
+          // If backend didn't provide a lastSync time (e.g., new user)
+          // but emails were fetched (implies success), set it to now.
+          // Check if emails were actually fetched to avoid setting on empty initial state
+          if (mode === 'sent' ? result.sent.length > 0 : result.received.length > 0 || result.totalPages > 0) {
+              setLastSync(Math.floor(Date.now() / 1000));
+          }
+        }
       }
       
       setInitialLoadDone(true);
@@ -101,13 +123,13 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
         loadEmailById(initialMessageId);
       }
     } catch (err) {
-      console.error('Error in fetchEmails:', err);
-      setError('Failed to load emails. Please try again later.');
+      console.error(`Error in fetch${mode.charAt(0).toUpperCase() + mode.slice(1)}:`, err);
+      setError(`Failed to load ${mode} emails. Please try again later.`);
       setEmails([]);
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, userEmail, mode, initialMessageId]);
+  }, [isAuthenticated, userEmail, mode, initialMessageId, emails.length]);
 
   // Handle mode change efficiently using cached data
   useEffect(() => {
@@ -121,13 +143,31 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
         setEmails(emailCacheRef.current.received);
         setTotalPages(emailCacheRef.current.receivedTotalPages); 
         setCurrentPage(0);
-      } else if (mode === 'drafts' || mode === 'trash' || mode === 'quantum') {
+      } else if (mode === 'drafts') {
+        // If we have drafts cached, use them, otherwise fetch
+        if (emailCacheRef.current.drafts.length > 0) {
+          setEmails(emailCacheRef.current.drafts);
+          setTotalPages(emailCacheRef.current.draftsTotalPages);
+        } else {
+          fetchEmails(0, false);
+        }
+        setCurrentPage(0);
+      } else if (mode === 'trash') {
+        // If we have trash cached, use them, otherwise fetch
+        if (emailCacheRef.current.trash.length > 0) {
+          setEmails(emailCacheRef.current.trash);
+          setTotalPages(emailCacheRef.current.trashTotalPages);
+        } else {
+          fetchEmails(0, false);
+        }
+        setCurrentPage(0);
+      } else {
         setEmails([]);
-        setTotalPages(1); // Set to 1 so pagination controls (which show if totalPages > 1) are hidden
+        setTotalPages(1);
         setCurrentPage(0);
       }
     }
-  }, [mode, initialLoadDone]);
+  }, [mode, initialLoadDone, fetchEmails]);
 
   // Load emails when component mounts or mode changes - never automatically refresh
   useEffect(() => {
@@ -147,6 +187,25 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
       loadEmailById(initialMessageId);
     }
   }, [initialMessageId, initialLoadDone]);
+
+  // Effect to handle email deletion
+  useEffect(() => {
+    // After an email deletion, refresh emails if in trash mode
+    if (onEmailDeleted && mode === 'trash') {
+      fetchEmails(currentPage, true);
+    }
+  }, [onEmailDeleted, mode, fetchEmails, currentPage]);
+
+  // Handler for email deletion from within the component
+  const handleLocalEmailDeleted = useCallback(() => {
+    // Refresh the email list
+    fetchEmails(currentPage, true);
+    
+    // Call parent onEmailDeleted if available
+    if (onEmailDeleted) {
+      onEmailDeleted();
+    }
+  }, [fetchEmails, currentPage, onEmailDeleted]);
 
   // Function to load email by ID
   const loadEmailById = useCallback(async (id: string) => {
@@ -203,6 +262,14 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
       // Clear emails to ensure list is empty before new data or if loader is delayed
       setEmails([]);
       
+      // For trash and drafts, directly fetch without global refresh
+      if (mode === 'trash' || mode === 'drafts') {
+        await fetchEmails(0, true);
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+      
       // Trigger the backend refresh endpoint
       const refreshResult = await EmailService.refreshEmails();
       
@@ -231,7 +298,7 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
     } finally {
       setIsRefreshing(false); // Hide button spinner
     }
-  }, [isAuthenticated, userEmail, isRefreshing, fetchEmails /* Added isRefreshing to dependencies */]);
+  }, [isAuthenticated, userEmail, isRefreshing, fetchEmails, mode]);
 
   // Handle pagination
   const handlePageChange = useCallback((newPage: number) => {
@@ -248,31 +315,32 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
     // Mark as read if not already read
     if (!email.read_at) {
       try {
-        const success = await EmailService.markAsRead(email.id);
-        if (success) {
-          // Update the email in our list
-          setEmails(prevEmails => 
-            prevEmails.map(e => 
-              e.id === email.id 
-                ? { ...e, read_at: new Date().toISOString() } 
-                : e
-            )
+        await EmailService.markAsRead(email.id);
+        
+        // Update the email in the list
+        setEmails(prevEmails => 
+          prevEmails.map(e => 
+            e.id === email.id ? { ...e, read_at: new Date().toISOString() } : e
+          )
+        );
+        
+        // Also update in cache
+        if (mode === 'inbox') {
+          emailCacheRef.current.received = emailCacheRef.current.received.map(e => 
+            e.id === email.id ? { ...e, read_at: new Date().toISOString() } : e
           );
-          
-          // Also update in our cache reference
-          if (mode === 'inbox') {
-            emailCacheRef.current.received = emailCacheRef.current.received.map(e => 
-              e.id === email.id 
-                ? { ...e, read_at: new Date().toISOString() } 
-                : e
-            );
-          } else if (mode === 'sent') {
-            emailCacheRef.current.sent = emailCacheRef.current.sent.map(e => 
-              e.id === email.id 
-                ? { ...e, read_at: new Date().toISOString() } 
-                : e
-            );
-          }
+        } else if (mode === 'sent') {
+          emailCacheRef.current.sent = emailCacheRef.current.sent.map(e => 
+            e.id === email.id ? { ...e, read_at: new Date().toISOString() } : e
+          );
+        } else if (mode === 'drafts') {
+          emailCacheRef.current.drafts = emailCacheRef.current.drafts.map(e => 
+            e.id === email.id ? { ...e, read_at: new Date().toISOString() } : e
+          );
+        } else if (mode === 'trash') {
+          emailCacheRef.current.trash = emailCacheRef.current.trash.map(e => 
+            e.id === email.id ? { ...e, read_at: new Date().toISOString() } : e
+          );
         }
       } catch (err) {
         console.error('Error marking email as read:', err);
@@ -389,6 +457,8 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
                   email={email} 
                   onClick={() => handleSelectEmail(email)} 
                   mode={mode}
+                  onEmailDeleted={handleLocalEmailDeleted}
+                  isSelected={selectedEmail?.id === email.id}
                 />
               ))}
             </div>
@@ -434,6 +504,7 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
       email={selectedEmail} 
       onBack={handleBackToList} 
       onClose={handleCloseDetail}
+      onEmailDeleted={handleLocalEmailDeleted}
     />
   );
 
