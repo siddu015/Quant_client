@@ -39,9 +39,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           <li>
             <button
               onClick={() => onSectionChange('inbox')}
-              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+              className={`w-full flex items-center px-4 py-3 rounded-xl transition-colors duration-200 ${
                 activeSection === 'inbox'
-                  ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                  ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg'
                   : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
               }`}
             >
@@ -54,9 +54,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           <li>
             <button
               onClick={() => onSectionChange('sent')}
-              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+              className={`w-full flex items-center px-4 py-3 rounded-xl transition-colors duration-200 ${
                 activeSection === 'sent'
-                  ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                  ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg'
                   : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
               }`}
             >
@@ -69,9 +69,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           <li>
             <button
               onClick={() => onSectionChange('drafts')}
-              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+              className={`w-full flex items-center px-4 py-3 rounded-xl transition-colors duration-200 ${
                 activeSection === 'drafts'
-                  ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                  ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg'
                   : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
               }`}
             >
@@ -84,9 +84,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange }) => 
           <li>
             <button
               onClick={() => onSectionChange('trash')}
-              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+              className={`w-full flex items-center px-4 py-3 rounded-xl transition-colors duration-200 ${
                 activeSection === 'trash'
-                  ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg transform hover:scale-[1.02]'
+                  ? 'bg-gradient-to-r from-blue-500/10 to-purple-600/10 text-blue-400 border border-blue-500/20 shadow-lg'
                   : 'text-gray-400 hover:bg-gray-800/30 hover:text-gray-200'
               }`}
             >

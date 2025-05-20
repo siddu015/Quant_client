@@ -134,7 +134,7 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
   // Minimized view
   if (isMinimized) {
     return (
-      <div className="bg-gray-900/80 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-gray-800/50 h-16 w-64 flex items-center justify-between p-4 cursor-pointer" onClick={() => setIsMinimized(false)}>
+      <div className="bg-gray-950/70 backdrop-blur-xl rounded-2xl shadow-2xl shadow-black/40 overflow-hidden border border-gray-700/60 h-16 w-64 flex items-center justify-between p-4 cursor-pointer" onClick={() => setIsMinimized(false)}>
         <div className="flex items-center">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-400 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -159,11 +159,11 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
   }
 
   return (
-    <div className="bg-gray-900/80 backdrop-blur-lg rounded-t-2xl shadow-xl overflow-hidden border border-gray-800/50">
+    <div className="bg-gray-950/70 backdrop-blur-xl rounded-t-2xl shadow-2xl shadow-black/40 overflow-hidden border border-gray-700/60">
       {/* Header */}
-      <div className="p-3 bg-gray-800/50 border-b border-gray-800/50 flex justify-between items-center">
+      <div className="p-3 bg-gray-900/60 border-b border-gray-700/50 flex justify-between items-center">
         <h2 className="text-sm font-semibold text-gray-200 flex items-center">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
           {initialDraft ? 'Edit Draft' : 'New Message'}
@@ -171,7 +171,7 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
         <div className="flex space-x-2">
           <button
             onClick={() => setIsMinimized(true)}
-            className="bg-gray-700/50 hover:bg-gray-600/50 text-gray-300 p-1.5 rounded-lg transition-all duration-200"
+            className="p-1.5 rounded-md text-gray-500 hover:text-gray-100 hover:bg-gray-700/80 transition-colors duration-150"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 12H6" />
@@ -179,7 +179,7 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
           </button>
           <button
             onClick={handleCancel}
-            className="bg-gray-700/50 hover:bg-gray-600/50 text-gray-300 p-1.5 rounded-lg transition-all duration-200"
+            className="p-1.5 rounded-md text-gray-500 hover:text-gray-100 hover:bg-gray-700/80 transition-colors duration-150"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -200,7 +200,7 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
             value={recipient}
             onChange={(e) => setRecipient(e.target.value)}
             required
-            className="w-full bg-gray-800/30 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
+            className="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-gray-400 focus:ring-0 transition-all duration-200"
             placeholder="recipient@example.com"
           />
         </div>
@@ -215,7 +215,7 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             required
-            className="w-full bg-gray-800/30 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200"
+            className="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-gray-400 focus:ring-0 transition-all duration-200"
             placeholder="Enter subject"
           />
         </div>
@@ -230,7 +230,7 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
             onChange={(e) => setBody(e.target.value)}
             required
             rows={8}
-            className="w-full bg-gray-800/30 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-transparent transition-all duration-200 resize-none"
+            className="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-gray-400 focus:ring-0 transition-all duration-200 resize-none"
             placeholder="Write your message here..."
           />
         </div>
@@ -242,8 +242,8 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
 
         <div className="flex items-center">
           <div className="flex-1">
-            <div className="text-sm font-bold text-blue-400 flex items-center mb-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="text-sm font-bold text-teal-400 flex items-center mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
               QUANTUM SECURE
@@ -258,9 +258,9 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
                   if (onSaveDraft) onSaveDraft({ recipient, subject, body });
                   onCancel();
                 }}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-all duration-200 flex items-center shadow-md text-sm"
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-md transition-colors duration-150 flex items-center shadow-md text-sm"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                 </svg>
                 Save Draft
@@ -270,8 +270,8 @@ const ComposeEmail: React.FC<ComposeEmailProps> = ({
           <button
             type="submit"
             disabled={isLoading}
-            className={`px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-lg transition-all duration-200 flex items-center shadow-md text-sm ${
-              isLoading ? 'opacity-50 cursor-not-allowed' : ''
+            className={`px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white font-semibold rounded-md transition-colors duration-150 flex items-center shadow-md text-sm ${
+              isLoading ? 'opacity-70 cursor-not-allowed' : ''
             }`}
           >
             {isLoading ? (

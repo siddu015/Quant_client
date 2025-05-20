@@ -6,9 +6,10 @@ interface MessagesListProps {
   emails: Email[];
   onSelect: (email: Email) => void;
   isLoading: boolean;
+  mode: 'inbox' | 'sent' | 'drafts' | 'quantum' | 'trash';
 }
 
-const MessagesList: React.FC<MessagesListProps> = ({ emails, onSelect, isLoading }) => {
+const MessagesList: React.FC<MessagesListProps> = ({ emails, onSelect, isLoading, mode }) => {
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-40">
@@ -38,6 +39,7 @@ const MessagesList: React.FC<MessagesListProps> = ({ emails, onSelect, isLoading
           key={email.id}
           email={email}
           onClick={() => onSelect(email)}
+          mode={mode}
         />
       ))}
     </div>

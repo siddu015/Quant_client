@@ -112,19 +112,20 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
   // Handle mode change efficiently using cached data
   useEffect(() => {
     if (initialLoadDone) {
-      setIsLoading(true);
-      
       // Use cached data when switching between modes
       if (mode === 'sent') {
         setEmails(emailCacheRef.current.sent);
         setTotalPages(emailCacheRef.current.sentTotalPages);
+        setCurrentPage(0);
       } else if (mode === 'inbox') {
         setEmails(emailCacheRef.current.received);
         setTotalPages(emailCacheRef.current.receivedTotalPages); 
+        setCurrentPage(0);
+      } else if (mode === 'drafts' || mode === 'trash' || mode === 'quantum') {
+        setEmails([]);
+        setTotalPages(1); // Set to 1 so pagination controls (which show if totalPages > 1) are hidden
+        setCurrentPage(0);
       }
-      
-      setCurrentPage(0);
-      setIsLoading(false);
     }
   }, [mode, initialLoadDone]);
 
@@ -192,19 +193,21 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
   const handleRefresh = useCallback(async () => {
     if (!isAuthenticated || !userEmail || isRefreshing) return;
     
-    setIsRefreshing(true);
+    setIsLoading(true); // Show main loader
+    setIsRefreshing(true); // For button spinner and disabling button
     setError(null);
     
     try {
       console.log('Manually refreshing emails...');
       
-      // First clear the emails to show loading state
+      // Clear emails to ensure list is empty before new data or if loader is delayed
       setEmails([]);
       
-      // Then trigger the backend refresh endpoint
+      // Trigger the backend refresh endpoint
       const refreshResult = await EmailService.refreshEmails();
       
-      // Always force a full reload regardless of whether new emails were found
+      // Always force a full reload. fetchEmails will manage isLoading internally,
+      // setting it to false upon completion or its own error.
       await fetchEmails(0, true);
       
       if (refreshResult.success) {
@@ -212,20 +215,23 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
         if (refreshResult.lastSync) {
           setLastSync(refreshResult.lastSync);
         } else {
-          // If the backend didn't provide a lastSync time, set it to now
           setLastSync(Math.floor(Date.now() / 1000));
         }
       } else {
         console.error('Failed to refresh emails from server');
         setError('Failed to refresh emails. Please try again later.');
+        // If refreshEmails failed but fetchEmails wasn't called or itself failed to set isLoading false
+        // This is a fallback, as fetchEmails should handle its own isLoading state.
+        setIsLoading(false); 
       }
     } catch (err) {
       console.error('Error during refresh:', err);
       setError('Failed to refresh emails. Please try again later.');
+      setIsLoading(false); // Ensure loader is hidden on error
     } finally {
-      setIsRefreshing(false);
+      setIsRefreshing(false); // Hide button spinner
     }
-  }, [isAuthenticated, userEmail, fetchEmails]);
+  }, [isAuthenticated, userEmail, isRefreshing, fetchEmails /* Added isRefreshing to dependencies */]);
 
   // Handle pagination
   const handlePageChange = useCallback((newPage: number) => {
@@ -296,7 +302,7 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
   const renderEmailList = () => (
     <div className="flex flex-col h-full">
       <div className="flex justify-between items-center mb-4 p-2 border-b border-gray-700/30">
-        <h2 className="text-xl font-semibold text-blue-600">{mode.charAt(0).toUpperCase() + mode.slice(1)}</h2>
+        <h2 className="text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-gray-300 to-blue-400">{mode.charAt(0).toUpperCase() + mode.slice(1)}</h2>
         <div className="flex items-center space-x-4">
           <div className="text-xs text-gray-400">
             Last synced: {lastSync ? getTimeSinceSync() : 'Never'}
@@ -331,26 +337,48 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
       </div>
 
       {emails.length === 0 ? (
-        <div className="flex flex-col justify-center items-center h-full">
-          <div className="bg-gray-800/60 rounded-full p-6 mb-4">
-            <svg 
-              className="w-12 h-12 text-gray-400" 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24" 
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={1.5} 
-                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" 
-              />
-            </svg>
+        mode === 'drafts' ? (
+          <div className="flex flex-col justify-center items-center h-full">
+            <div className="bg-gray-800/60 rounded-full p-6 mb-4">
+              <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"></path>
+              </svg>
+            </div>
+            <p className="text-center text-gray-400">No drafts found</p>
+            <p className="text-center text-gray-500 text-sm mt-2">Your saved drafts will appear here.</p>
           </div>
-          <p className="text-center text-gray-400">No emails found</p>
-          <p className="text-center text-gray-500 text-sm mt-2">Click the refresh button to check for new emails</p>
-        </div>
+        ) : mode === 'trash' ? (
+          <div className="flex flex-col justify-center items-center h-full">
+            <div className="bg-gray-800/60 rounded-full p-6 mb-4">
+              <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+              </svg>
+            </div>
+            <p className="text-center text-gray-400">No trash found</p>
+            <p className="text-center text-gray-500 text-sm mt-2">Deleted emails will appear here.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col justify-center items-center h-full">
+            <div className="bg-gray-800/60 rounded-full p-6 mb-4">
+              <svg 
+                className="w-12 h-12 text-gray-400" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24" 
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={1.5} 
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" 
+                />
+              </svg>
+            </div>
+            <p className="text-center text-gray-400">No emails found in {mode}</p>
+            <p className="text-center text-gray-500 text-sm mt-2">Click the refresh button to check for new emails or try another folder.</p>
+          </div>
+        )
       ) : (
         <>
           <div className="flex-grow overflow-auto custom-scrollbar">
@@ -360,6 +388,7 @@ const Inbox: React.FC<InboxProps> = ({ mode, initialMessageId, onMessageClosed }
                   key={email.id} 
                   email={email} 
                   onClick={() => handleSelectEmail(email)} 
+                  mode={mode}
                 />
               ))}
             </div>

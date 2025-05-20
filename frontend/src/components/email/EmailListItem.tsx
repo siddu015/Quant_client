@@ -6,9 +6,10 @@ interface EmailListItemProps {
   email: Email;
   onClick: () => void;
   isSelected?: boolean;
+  mode: 'inbox' | 'sent' | 'drafts' | 'quantum' | 'trash';
 }
 
-const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick, isSelected }) => {
+const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick, isSelected, mode }) => {
   // Memoize the formatted date to avoid recalculation on each render
   const formattedDate = useMemo(() => {
     try {
@@ -60,11 +61,14 @@ const EmailListItem: React.FC<EmailListItemProps> = ({ email, onClick, isSelecte
 
   // Determine sender or recipient display name
   const displayName = useMemo(() => {
+    if (mode === 'sent') {
+      return email.recipient_email;
+    }
     if (email.sender_name && email.sender_email !== email.recipient_email) {
       return email.sender_name;
     }
     return email.sender_email;
-  }, [email.sender_name, email.sender_email, email.recipient_email]);
+  }, [email.sender_name, email.sender_email, email.recipient_email, mode]);
 
   // Generate a color based on the name for avatar background
   const getAvatarColor = (name: string) => {
